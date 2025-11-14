@@ -243,7 +243,7 @@ python bot.py
 
 ## 作者
 
-- Sanite&Ava - [Telegram](https://t.me/Sanite_Ava)
+[Sanite&Ava](https://t.me/Sanite_Ava)
 
 ## 致谢
 
