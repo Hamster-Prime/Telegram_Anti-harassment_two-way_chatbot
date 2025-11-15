@@ -245,7 +245,7 @@ python bot.py
   如果这个项目对你有帮助，请给个 Star ⭐️
 </p>
 <p align="center">
-  <a href="https://github.com/Hamster-Prime/Telegram_Anti-harassment_two-way_chatbot">
-    <img src="https://raw.githubusercontent.com/Hamster-Prime/Telegram_Anti-harassment_two-way_chatbot/main/assets/star_history.png" alt="Star History">
+  <a href="https://www.star-history.com/#Hamster-Prime/Telegram_Anti-harassment_two-way_chatbot&type=date&legend=top-left">
+    <img src="https://api.star-history.com/svg?repos=Hamster-Prime/Telegram_Anti-harassment_two-way_chatbot&type=date&legend=top-left" alt="Star History Chart">
   </a>
 </p>
