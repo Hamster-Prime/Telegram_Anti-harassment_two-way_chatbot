@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   TG-Antiharassment-Bot:
     container_name: TG-Antiharassment-Bot  # 容器名，可定义
