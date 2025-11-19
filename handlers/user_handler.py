@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 from database import models as db
-from services.verification import create_verification
+from services.verification import create_verification, is_verification_pending, get_pending_verification_message
 from services.thread_manager import get_or_create_thread
 from services.gemini_service import gemini_service
 from utils.media_converter import sticker_to_image
@@ -157,10 +157,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not config.VERIFICATION_ENABLED:
             await db.update_user_verification(user.id, is_verified=True)
         else:
-            context.user_data['pending_update'] = update
-            question, keyboard = await create_verification(user.id)
-            await update.message.reply_text(question, reply_markup=keyboard)
-            return
+            # 检查是否有待验证
+            has_pending, is_expired = is_verification_pending(user.id)
+            
+            if has_pending and not is_expired:
+                # 有未超时的待验证，提示完成之前的验证
+                verification_data = get_pending_verification_message(user.id)
+                if verification_data:
+                    question, keyboard = verification_data
+                    context.user_data['pending_update'] = update
+                    await update.message.reply_text(
+                        "您还有未完成的人机验证，请先完成验证后再发送消息。\n\n"
+                        f"请完成人机验证: \n\n{question}",
+                        reply_markup=keyboard
+                    )
+                    return
+            else:
+                # 没有待验证或已超时，创建新的验证
+                context.user_data['pending_update'] = update
+                question, keyboard = await create_verification(user.id)
+                await update.message.reply_text(question, reply_markup=keyboard)
+                return
     
     
     message = update.message
