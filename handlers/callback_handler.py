@@ -1,11 +1,13 @@
 import re
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
-from services.verification import verify_answer
+from services.verification import verify_answer, create_verification
 from services.gemini_service import gemini_service
 from database import models as db
 from utils.media_converter import sticker_to_image
-from .user_handler import handle_message
+from services.thread_manager import get_or_create_thread
+from .user_handler import _resend_message
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -73,7 +75,37 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await analyzing_message.delete()
 
                 if should_forward:
-                    await handle_message(pending_update, context)
+                    # 直接转发消息，避免再次触发内容审查
+                    thread_id, is_new = await get_or_create_thread(pending_update, context)
+                    if not thread_id:
+                        await pending_update.message.reply_text("无法创建或找到您的话题，请联系管理员。")
+                        return
+                    
+                    try:
+                        # 如果不是新话题，直接转发消息
+                        if not is_new:
+                            await _resend_message(pending_update, context, thread_id)
+                    except BadRequest as e:
+                        if "Message thread not found" in e.message:
+                            # 话题已被关闭，需要重新验证
+                            await db.update_user_thread_id(user_id, None)
+                            await db.update_user_verification(user_id, False)
+                            
+                            context.user_data['pending_update'] = pending_update
+                            question, keyboard = await create_verification(user_id)
+                            
+                            full_message = (
+                                "您的话题已被关闭，请重新进行验证以发送消息。\n\n"
+                                f"{question}"
+                            )
+                            
+                            await pending_update.message.reply_text(
+                                text=full_message,
+                                reply_markup=keyboard
+                            )
+                        else:
+                            print(f"发送消息时发生未知错误: {e}")
+                            await pending_update.message.reply_text("发送消息时发生未知错误，请稍后再试。")
             else:
                 await query.message.reply_text("现在您可以发送消息了！")
     
