@@ -256,6 +256,7 @@ python bot.py
 - `/block` - 对应话题直接发送永久拉黑用户。
 - `/blacklist` - 查看当前的黑名单列表。
 - `/stats` - 查看机器人运行统计信息。
+- `/view_filtered` - 查看被拦截信息及发送者。
 
 ---
 

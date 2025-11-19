@@ -82,8 +82,14 @@ async def get_filtered_messages(limit: int = 20, offset: int = 0):
             rows = await cursor.fetchall()
             if not rows:
                 return []
-            cols = [description for description in cursor.description]
+            cols = [description[0] for description in cursor.description]
             return [dict(zip(cols, row)) for row in rows]
+
+async def get_filtered_messages_count() -> int:
+    async with db_manager.get_connection() as db:
+        async with db.execute('SELECT COUNT(*) FROM filtered_messages') as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
 
 
 
@@ -132,8 +138,30 @@ async def get_blacklist():
                 return []
             
             
-            cols = [description for description in cursor.description]
+            cols = [description[0] for description in cursor.description]
             return [dict(zip(cols, row)) for row in rows]
+
+async def get_blacklist_paginated(limit: int = 5, offset: int = 0):
+    async with db_manager.get_connection() as db:
+        async with db.execute('''
+            SELECT b.user_id, u.first_name, u.username, b.reason, b.blocked_at
+            FROM blacklist b
+            LEFT JOIN users u ON b.user_id = u.user_id
+            ORDER BY b.blocked_at DESC
+            LIMIT ? OFFSET ?
+        ''', (limit, offset)) as cursor:
+            rows = await cursor.fetchall()
+            if not rows:
+                return []
+            
+            cols = [description[0] for description in cursor.description]
+            return [dict(zip(cols, row)) for row in rows]
+
+async def get_blacklist_count() -> int:
+    async with db_manager.get_connection() as db:
+        async with db.execute('SELECT COUNT(*) FROM blacklist') as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
 
 async def set_user_blacklist_strikes(user_id: int, strikes: int):
     async with db_manager.get_connection() as db:

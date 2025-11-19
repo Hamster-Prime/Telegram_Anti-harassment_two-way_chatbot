@@ -53,13 +53,11 @@ async def verify_unblock_answer(user_id: int, user_answer: str):
 
     session = pending_unblocks[user_id]
     
-    
     del pending_unblocks[user_id]
     
     if time.time() - session['created_at'] > config.VERIFICATION_TIMEOUT:
         return "解封超时，请重新发送消息以获取新问题。", False
 
-    
     if user_answer == session['answer']:
         await db.remove_from_blacklist(user_id)
         
@@ -71,30 +69,63 @@ async def verify_unblock_answer(user_id: int, user_answer: str):
         await db.set_user_blacklist_strikes(user_id, 99)
         return "答案错误，解封失败。您已被永久封禁。", False
 
-async def get_blacklist_keyboard():
-    blacklist_users = await db.get_blacklist()
+def _safe_text_for_markdown(text: str) -> str:
+    if not text:
+        return text
+    
+    dangerous_chars = r'_*[]()`'
+    return "".join(f"\\{char}" if char in dangerous_chars else char for char in text)
+
+async def get_blacklist_keyboard(page: int = 1, per_page: int = 5):
+    total_count = await db.get_blacklist_count()
+    
+    if total_count == 0:
+        return "黑名单中没有用户。", None
+
+    total_pages = (total_count + per_page - 1) // per_page
+
+    if page < 1:
+        page = 1
+    elif page > total_pages:
+        page = total_pages
+
+    offset = (page - 1) * per_page
+
+    blacklist_users = await db.get_blacklist_paginated(limit=per_page, offset=offset)
+    
     if not blacklist_users:
         return "黑名单中没有用户。", None
 
     keyboard = []
-    message = "黑名单用户列表\n\n"
-    for user in blacklist_users:
-        user_id = user[('user_id', None, None, None, None, None, None)]
-        first_name = user[('first_name', None, None, None, None, None, None)] or 'N/A'
-        username = user[('username', None, None, None, None, None, None)]
-
+    message = f"黑名单用户列表 (第 {page}/{total_pages} 页)\n\n"
+    
+    for idx, user in enumerate(blacklist_users, 1):
+        user_id = user.get('user_id')
+        first_name = user.get('first_name') or 'N/A'
+        username = user.get('username')
+        reason = user.get('reason') or '无'
         
-        safe_first_name = escape_markdown(first_name, version=2)
-        safe_username = escape_markdown(username, version=2) if username else None
+        safe_first_name = _safe_text_for_markdown(first_name)
+        safe_username = _safe_text_for_markdown(username) if username else None
+        safe_reason = _safe_text_for_markdown(reason)
         
         user_info = f"{safe_first_name}"
         if safe_username:
             user_info += f" (@{safe_username})"
         
-        message += f"{user_info} (`{user_id}`)\n"
+        message += f"{idx}. {user_info} (`{user_id}`)\n原因: {safe_reason}\n\n"
         
         keyboard.append([
             InlineKeyboardButton(f"解封 {first_name}", callback_data=f"admin_unblock_{user_id}")
         ])
+    
+    navigation_buttons = []
+    if page > 1:
+        navigation_buttons.append(InlineKeyboardButton("上一页", callback_data=f"blacklist_page_{page - 1}"))
+    if page < total_pages:
+        navigation_buttons.append(InlineKeyboardButton("下一页", callback_data=f"blacklist_page_{page + 1}"))
+    
+    if navigation_buttons:
+        keyboard.append(navigation_buttons)
 
     return message, InlineKeyboardMarkup(keyboard)

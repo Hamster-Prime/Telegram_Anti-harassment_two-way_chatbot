@@ -46,7 +46,7 @@ from utils.decorators import admin_only
 
 @admin_only
 async def blacklist(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message, keyboard = await get_blacklist_keyboard()
+    message, keyboard = await get_blacklist_keyboard(page=1)
     if keyboard:
         await update.message.reply_text(message, reply_markup=keyboard, parse_mode='Markdown')
     else:

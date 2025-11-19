@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import models as db
 
@@ -81,28 +81,77 @@ async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     await _send_reply_to_user(update, context, user_id)
 
+async def _format_filtered_messages(messages, page: int, total_pages: int):
+    response = f"被过滤的消息 (第 {page}/{total_pages} 页):\n\n"
+    
+    for idx, msg in enumerate(messages, 1):
+        first_name = msg.get('first_name') or 'N/A'
+        username = msg.get('username') or 'N/A'
+        reason = msg.get('reason') or 'N/A'
+        content = msg.get('content') or 'N/A'
+        filtered_at = msg.get('filtered_at') or 'N/A'
+
+        if content and len(content) > 100:
+            content = content[:100] + "..."
+        
+        response += (
+            f"【{idx}】\n"
+            f"用户: {first_name} (@{username})\n"
+            f"原因: {reason}\n"
+            f"内容: {content}\n"
+            f"时间: {filtered_at}\n\n"
+        )
+    
+    return response
+
+async def _get_filtered_messages_keyboard(page: int, total_pages: int):
+    keyboard = []
+    
+    if total_pages <= 1:
+        return None
+    
+    buttons = []
+    
+    if page > 1:
+        buttons.append(InlineKeyboardButton("上一页", callback_data=f"filtered_page_{page - 1}"))
+    
+    if page < total_pages:
+        buttons.append(InlineKeyboardButton("下一页", callback_data=f"filtered_page_{page + 1}"))
+    
+    if buttons:
+        keyboard.append(buttons)
+    
+    return InlineKeyboardMarkup(keyboard) if keyboard else None
+
 async def view_filtered(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await db.is_admin(update.effective_user.id):
         await update.message.reply_text("您没有权限执行此操作。")
         return
 
-    args = context.args
-    limit = int(args) if args and args.isdigit() else 20
-    offset = int(args) if args and len(args) > 1 and args.isdigit() else 0
+    MESSAGES_PER_PAGE = 5
+    page = 1
 
-    messages = await db.get_filtered_messages(limit, offset)
+    total_count = await db.get_filtered_messages_count()
+    
+    if total_count == 0:
+        await update.message.reply_text("没有找到被过滤的消息。")
+        return
+    
+    total_pages = (total_count + MESSAGES_PER_PAGE - 1) // MESSAGES_PER_PAGE
 
+    offset = (page - 1) * MESSAGES_PER_PAGE
+
+    messages = await db.get_filtered_messages(MESSAGES_PER_PAGE, offset)
+    
     if not messages:
         await update.message.reply_text("没有找到被过滤的消息。")
         return
 
-    response = "被过滤的消息:\n\n"
-    for msg in messages:
-        response += (
-            f"用户: {msg['first_name']} (@{msg['username'] or 'N/A'})\n"
-            f"原因: {msg['reason']}\n"
-            f"内容: {msg['content'] or 'N/A'}\n"
-            f"时间: {msg['filtered_at']}\n\n"
-        )
+    response = await _format_filtered_messages(messages, page, total_pages)
 
-    await update.message.reply_text(response)
+    keyboard = await _get_filtered_messages_keyboard(page, total_pages)
+
+    if keyboard:
+        await update.message.reply_text(response, reply_markup=keyboard)
+    else:
+        await update.message.reply_text(response)

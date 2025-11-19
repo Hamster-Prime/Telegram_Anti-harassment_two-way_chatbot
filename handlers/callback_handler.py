@@ -1,3 +1,4 @@
+import re
 from telegram import Update
 from telegram.ext import ContextTypes
 from services.verification import verify_answer
@@ -94,8 +95,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         response = await blacklist.unblock_user(user_id_to_unblock)
         await query.answer(response, show_alert=True)
+
+        current_page = 1
+        message_text = query.message.text or ""
+        if "第" in message_text and "/" in message_text:
+            try:
+                match = re.search(r'第\s*(\d+)/', message_text)
+                if match:
+                    current_page = int(match.group(1))
+            except:
+                pass
         
-        message, keyboard = await blacklist.get_blacklist_keyboard()
+        message, keyboard = await blacklist.get_blacklist_keyboard(page=current_page)
         if keyboard:
             await query.edit_message_text(
                 text=message,
@@ -104,3 +115,71 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await query.edit_message_text(text=message)
+    
+    elif data.startswith("blacklist_page_"):
+        from services import blacklist
+        
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+        
+        try:
+            page = int(data.split("_")[2])
+        except (ValueError, IndexError):
+            await query.answer("无效的页码。", show_alert=True)
+            return
+        
+        message, keyboard = await blacklist.get_blacklist_keyboard(page=page)
+        if keyboard:
+            await query.edit_message_text(
+                text=message,
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+        else:
+            await query.edit_message_text(text=message)
+    
+    elif data.startswith("filtered_page_"):
+        from .admin_handler import _format_filtered_messages, _get_filtered_messages_keyboard
+        
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+        
+        try:
+            page = int(data.split("_")[2])
+        except (ValueError, IndexError):
+            await query.answer("无效的页码。", show_alert=True)
+            return
+        
+        MESSAGES_PER_PAGE = 5
+
+        total_count = await db.get_filtered_messages_count()
+        
+        if total_count == 0:
+            await query.edit_message_text("没有找到被过滤的消息。")
+            return
+        
+        total_pages = (total_count + MESSAGES_PER_PAGE - 1) // MESSAGES_PER_PAGE
+
+        if page < 1:
+            page = 1
+        elif page > total_pages:
+            page = total_pages
+
+        offset = (page - 1) * MESSAGES_PER_PAGE
+
+        messages = await db.get_filtered_messages(MESSAGES_PER_PAGE, offset)
+        
+        if not messages:
+            await query.edit_message_text("没有找到被过滤的消息。")
+            return
+
+        response = await _format_filtered_messages(messages, page, total_pages)
+
+        keyboard = await _get_filtered_messages_keyboard(page, total_pages)
+
+        if keyboard:
+            await query.edit_message_text(response, reply_markup=keyboard)
+        else:
+            await query.edit_message_text(response)
