@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import models as db
 from services.blacklist import block_user, unblock_user, get_blacklist_keyboard 
@@ -138,3 +138,120 @@ async def getid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     
     await update.message.reply_text(message, parse_mode='Markdown')
+
+@admin_only
+async def autoreply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        is_enabled = await db.get_autoreply_enabled()
+        status_text = "已启用" if is_enabled else "已禁用"
+        
+        message = (
+            f"自动回复管理\n\n"
+            f"当前状态: {status_text}\n\n"
+            f"请选择操作："
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "关闭自动回复" if is_enabled else "开启自动回复",
+                    callback_data=f"autoreply_toggle"
+                )
+            ],
+            [InlineKeyboardButton("管理知识库", callback_data="autoreply_kb_list_page_1")],
+            [InlineKeyboardButton("添加知识条目", callback_data="autoreply_kb_add")],
+        ]
+        
+        await update.message.reply_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        return
+    
+    subcommand = context.args[0].lower()
+    
+    if subcommand == "on":
+        await db.set_autoreply_enabled(True)
+        await update.message.reply_text("自动回复已开启")
+    elif subcommand == "off":
+        await db.set_autoreply_enabled(False)
+        await update.message.reply_text("自动回复已关闭")
+    elif subcommand == "add":
+        if len(context.args) < 3:
+            await update.message.reply_text(
+                "用法: /autoreply add <标题> <内容>\n\n"
+                "示例: /autoreply add 常见问题 这是问题的答案"
+            )
+            return
+        
+        title = context.args[1]
+        content = " ".join(context.args[2:])
+        await db.add_knowledge_entry(title, content)
+        await update.message.reply_text(f"已添加知识条目: {title}")
+    elif subcommand == "list":
+        entries = await db.get_all_knowledge_entries()
+        if not entries:
+            await update.message.reply_text("知识库为空")
+            return
+        
+        message = "知识库条目:\n\n"
+        for entry in entries:
+            message += f"ID: {entry['id']}\n"
+            message += f"标题: {entry['title']}\n"
+            message += f"内容: {entry['content'][:50]}...\n\n"
+        
+        await update.message.reply_text(message)
+    elif subcommand == "edit":
+        if len(context.args) < 4:
+            await update.message.reply_text(
+                "用法: /autoreply edit <ID> <标题> <内容>\n\n"
+                "示例: /autoreply edit 1 新标题 新内容"
+            )
+            return
+        
+        try:
+            entry_id = int(context.args[1])
+        except ValueError:
+            await update.message.reply_text("无效的条目ID")
+            return
+        
+        title = context.args[2]
+        content = " ".join(context.args[3:])
+        
+        entry = await db.get_knowledge_entry(entry_id)
+        if not entry:
+            await update.message.reply_text(f"条目ID {entry_id} 不存在")
+            return
+        
+        await db.update_knowledge_entry(entry_id, title, content)
+        await update.message.reply_text(f"已更新知识条目: {title}")
+    elif subcommand == "delete":
+        if len(context.args) < 2:
+            await update.message.reply_text("用法: /autoreply delete <ID>")
+            return
+        
+        try:
+            entry_id = int(context.args[1])
+        except ValueError:
+            await update.message.reply_text("无效的条目ID")
+            return
+        
+        entry = await db.get_knowledge_entry(entry_id)
+        if not entry:
+            await update.message.reply_text(f"条目ID {entry_id} 不存在")
+            return
+        
+        await db.delete_knowledge_entry(entry_id)
+        await update.message.reply_text(f"已删除知识条目: {entry['title']}")
+    else:
+        await update.message.reply_text(
+            "用法:\n"
+            "/autoreply - 显示管理菜单\n"
+            "/autoreply on - 开启自动回复\n"
+            "/autoreply off - 关闭自动回复\n"
+            "/autoreply add <标题> <内容> - 添加知识条目\n"
+            "/autoreply edit <ID> <标题> <内容> - 编辑知识条目\n"
+            "/autoreply delete <ID> - 删除知识条目\n"
+            "/autoreply list - 列出所有知识条目"
+        )

@@ -257,3 +257,82 @@ async def get_blacklist_user_details(user_id: int):
                 cols = [description[0] for description in cursor.description]
                 return dict(zip(cols, row))
             return None
+
+async def add_knowledge_entry(title: str, content: str):
+    async with db_manager.get_connection() as db:
+        await db.execute('''
+            INSERT INTO knowledge_base (title, content, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        ''', (title, content))
+        await db.commit()
+
+async def get_all_knowledge_entries():
+    async with db_manager.get_connection() as db:
+        async with db.execute('''
+            SELECT id, title, content, created_at, updated_at
+            FROM knowledge_base
+            ORDER BY updated_at DESC
+        ''') as cursor:
+            rows = await cursor.fetchall()
+            if not rows:
+                return []
+            cols = [description[0] for description in cursor.description]
+            return [dict(zip(cols, row)) for row in rows]
+
+async def get_knowledge_entry(knowledge_id: int):
+    async with db_manager.get_connection() as db:
+        async with db.execute('''
+            SELECT id, title, content, created_at, updated_at
+            FROM knowledge_base
+            WHERE id = ?
+        ''', (knowledge_id,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                cols = [description[0] for description in cursor.description]
+                return dict(zip(cols, row))
+            return None
+
+async def update_knowledge_entry(knowledge_id: int, title: str, content: str):
+    async with db_manager.get_connection() as db:
+        await db.execute('''
+            UPDATE knowledge_base
+            SET title = ?, content = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (title, content, knowledge_id))
+        await db.commit()
+
+async def delete_knowledge_entry(knowledge_id: int):
+    async with db_manager.get_connection() as db:
+        await db.execute('DELETE FROM knowledge_base WHERE id = ?', (knowledge_id,))
+        await db.commit()
+
+async def get_all_knowledge_content() -> str:
+    entries = await get_all_knowledge_entries()
+    if not entries:
+        return ""
+    
+    knowledge_text = "知识库内容：\n\n"
+    for entry in entries:
+        knowledge_text += f"标题：{entry['title']}\n"
+        knowledge_text += f"内容：{entry['content']}\n\n"
+    
+    return knowledge_text
+
+async def get_autoreply_enabled() -> bool:
+    async with db_manager.get_connection() as db:
+        async with db.execute(
+            'SELECT value FROM settings WHERE key = ?',
+            ('autoreply_enabled',)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row[0] == '1'
+            return False
+
+async def set_autoreply_enabled(enabled: bool):
+    async with db_manager.get_connection() as db:
+        await db.execute(
+            'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?',
+            ('1' if enabled else '0', 'autoreply_enabled')
+        )
+        await db.commit()

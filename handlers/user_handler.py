@@ -218,26 +218,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("无法创建或找到您的话题，请联系管理员。")
         return
     
+    forwarded_message_id = None
     try:
-        
         if not is_new:
-            await _resend_message(update, context, thread_id)
+            if message.text:
+                sent_msg = await context.bot.send_message(
+                    chat_id=config.FORUM_GROUP_ID,
+                    text=message.text,
+                    entities=message.entities,
+                    message_thread_id=thread_id,
+                    disable_web_page_preview=True
+                )
+                forwarded_message_id = sent_msg.message_id
+            else:
+                await _resend_message(update, context, thread_id)
+                pass
     except BadRequest as e:
         if "Message thread not found" in e.message:
-            
             await db.update_user_thread_id(user.id, None)
             await db.update_user_verification(user.id, False)
-            
-            
             context.user_data['pending_update'] = update
             question, keyboard = await create_verification(user.id)
-            
-            
             full_message = (
                 "您的话题已被关闭，请重新进行验证以发送消息。\n\n"
                 f"{question}"
             )
-            
             await update.message.reply_text(
                 text=full_message,
                 reply_markup=keyboard
@@ -246,3 +251,74 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             print(f"发送消息时发生未知错误: {e}")
             await update.message.reply_text("发送消息时发生未知错误，请稍后再试。")
+            return
+    
+    if message.text and await db.get_autoreply_enabled():
+        knowledge_base_content = await db.get_all_knowledge_content()
+        if knowledge_base_content:
+            autoreply_text = await gemini_service.generate_autoreply(
+                message.text,
+                knowledge_base_content
+            )
+            
+            if autoreply_text:
+                try:
+                    await update.message.reply_text(
+                        autoreply_text,
+                        parse_mode='Markdown'
+                    )
+                except Exception as e:
+                    print(f"Markdown解析失败，使用纯文本: {e}")
+                    await update.message.reply_text(autoreply_text)
+                
+                if forwarded_message_id:
+                    admin_notification = (
+                        f"自动回复内容:\n\n"
+                        f"{autoreply_text}"
+                    )
+                    try:
+                        await context.bot.send_message(
+                            chat_id=config.FORUM_GROUP_ID,
+                            text=admin_notification,
+                            message_thread_id=thread_id,
+                            reply_to_message_id=forwarded_message_id,
+                            parse_mode='Markdown'
+                        )
+                    except Exception as e:
+                        print(f"发送自动回复通知给管理员失败（Markdown），尝试纯文本: {e}")
+                        try:
+                            admin_notification_plain = (
+                                f"自动回复内容:\n\n"
+                                f"{autoreply_text}"
+                            )
+                            await context.bot.send_message(
+                                chat_id=config.FORUM_GROUP_ID,
+                                text=admin_notification_plain,
+                                message_thread_id=thread_id,
+                                reply_to_message_id=forwarded_message_id
+                            )
+                        except Exception as e2:
+                            print(f"发送自动回复通知给管理员失败: {e2}")
+    
+    if not (message.text and await db.get_autoreply_enabled() and forwarded_message_id):
+        try:
+            if not is_new and not forwarded_message_id:
+                await _resend_message(update, context, thread_id)
+        except BadRequest as e:
+            if "Message thread not found" in e.message:
+                await db.update_user_thread_id(user.id, None)
+                await db.update_user_verification(user.id, False)
+                context.user_data['pending_update'] = update
+                question, keyboard = await create_verification(user.id)
+                full_message = (
+                    "您的话题已被关闭，请重新进行验证以发送消息。\n\n"
+                    f"{question}"
+                )
+                await update.message.reply_text(
+                    text=full_message,
+                    reply_markup=keyboard
+                )
+                return
+            else:
+                print(f"发送消息时发生未知错误: {e}")
+                await update.message.reply_text("发送消息时发生未知错误，请稍后再试。")

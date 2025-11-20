@@ -35,6 +35,7 @@ class DatabaseManager:
             await self.create_settings_table(db)
             await self.create_statistics_table(db)
             await self.create_filtered_messages_table(db)
+            await self.create_knowledge_base_table(db)
 
             await self.migrate_database(db)
 
@@ -198,6 +199,18 @@ class DatabaseManager:
         ''')
         await db.execute('CREATE INDEX IF NOT EXISTS idx_filtered_messages_user_id ON filtered_messages(user_id)')
 
+    async def create_knowledge_base_table(self, db):
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS knowledge_base (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_knowledge_base_title ON knowledge_base(title)')
+
     async def get_filtered_messages_by_user(self, user_id, limit=5):
         async with self.get_connection() as db:
             cursor = await db.execute(
@@ -225,6 +238,15 @@ class DatabaseManager:
         except aiosqlite.OperationalError as e:
             if "duplicate column name" not in str(e):
                 raise e
+
+        try:
+            await db.execute(
+                'INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)',
+                ('autoreply_enabled', '0', '是否启用自动回复功能 (1=是, 0=否)')
+            )
+            logging.info("数据库迁移：成功添加自动回复开关设置。")
+        except Exception as e:
+            logging.warning(f"添加自动回复设置时出错: {e}")
 
 
 

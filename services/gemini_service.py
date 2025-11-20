@@ -392,4 +392,59 @@ class GeminiService:
             
             return self._get_local_question()
 
+    async def generate_autoreply(self, user_message: str, knowledge_base_content: str) -> str:
+        if not self.client or not self.filter_model_name:
+            return None
+
+        if not knowledge_base_content or knowledge_base_content.strip() == "":
+            return None
+
+        prompt_parts = [
+            "你是一个客服助手，必须严格根据提供的知识库内容来回答用户的问题。",
+            "**重要规则：**",
+            "1. 你只能根据知识库中的内容来回答用户的问题。",
+            "2. 如果知识库中没有相关内容，你必须明确告诉用户：'抱歉，我无法根据现有知识库回答您的问题，请稍后管理员会为您回复。'",
+            "3. 严禁编造、猜测或提供知识库中没有的信息。",
+            "4. 如果用户的问题与知识库内容相关，请整理汇总相关知识库条目，用清晰、友好的语言回答。",
+            "5. 回答要简洁明了，直接回答用户的问题。",
+            "6. **重要：请使用Markdown格式回复**，可以使用以下Markdown语法：",
+            "   - 使用 **粗体** 强调重要内容",
+            "   - 使用 *斜体* 表示次要信息",
+            "   - 使用 `代码` 格式表示技术术语或命令",
+            "   - 使用列表格式（- 或 1.）组织内容",
+            "   - 使用 > 引用块表示重要提示",
+            "\n--- 知识库内容 ---",
+            knowledge_base_content,
+            "\n--- 用户问题 ---",
+            user_message,
+            "\n--- 请根据知识库内容回答用户问题（使用Markdown格式）---",
+            "如果知识库中没有相关内容，请回复：'抱歉，我无法根据现有知识库回答您的问题，请稍后管理员会为您回复。'"
+        ]
+
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=self.filter_model_name,
+                contents="\n".join(prompt_parts)
+            )
+            
+            if not hasattr(response, 'candidates') or not response.candidates:
+                print("Gemini自动回复生成被阻止。")
+                return None
+
+            if response.candidates and response.candidates[0].content.parts:
+                response_text = response.candidates[0].content.parts[0].text
+            else:
+                response_text = None
+            
+            if not response_text:
+                return None
+            
+            if "无法根据现有知识库" in response_text or "抱歉" in response_text:
+                return None
+            
+            return response_text.strip()
+        except Exception as e:
+            print(f"Gemini自动回复生成失败: {e}")
+            return None
+
 gemini_service = GeminiService()
