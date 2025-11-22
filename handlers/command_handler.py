@@ -1,12 +1,11 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from database import models as db
-from services.blacklist import block_user, unblock_user, get_blacklist_keyboard 
+from services.blacklist import block_user, unblock_user, get_blacklist_keyboard
 from utils.decorators import admin_only
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    
     
     if not await db.get_user(user.id):
         await db.add_user(
@@ -42,9 +41,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
-from services.blacklist import block_user, unblock_user, get_blacklist_keyboard
-from utils.decorators import admin_only
-
 @admin_only
 async def blacklist(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message, keyboard = await get_blacklist_keyboard(page=1)
@@ -56,7 +52,6 @@ async def blacklist(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @admin_only
 async def block(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-    
     
     if message.is_topic_message and message.reply_to_message:
         thread_id = message.message_thread_id
@@ -72,7 +67,6 @@ async def block(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("无法找到该话题对应的用户。")
         return
 
-    
     if not context.args:
         await update.message.reply_text("请提供用户ID或在话题中回复。用法: /block <user_id> [reason]")
         return
@@ -92,7 +86,7 @@ async def unblock(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        user_id_to_unblock = int(context.args)
+        user_id_to_unblock = int(context.args[0])
         response = await unblock_user(user_id_to_unblock)
         await update.message.reply_text(response)
     except (ValueError, IndexError):
@@ -100,8 +94,6 @@ async def unblock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    
     total_users = await db.get_total_users_count()
     blocked_users = await db.get_blocked_users_count()
     

@@ -3,13 +3,10 @@ import os
 import logging
 from datetime import datetime
 
-
 class DatabaseManager:
-
     _instance = None
 
     def __new__(cls, db_path='./data/bot.db'):
-        
         if cls._instance is None:
             cls._instance = super(DatabaseManager, cls).__new__(cls)
             cls._instance.db_path = db_path
@@ -17,15 +14,12 @@ class DatabaseManager:
         return cls._instance
 
     def ensure_data_directory(self):
-        
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
 
     def get_connection(self):
-        
         return aiosqlite.connect(self.db_path)
 
     async def initialize(self):
-        
         async with self.get_connection() as db:
             await self.create_users_table(db)
             await self.create_messages_table(db)
@@ -36,14 +30,11 @@ class DatabaseManager:
             await self.create_statistics_table(db)
             await self.create_filtered_messages_table(db)
             await self.create_knowledge_base_table(db)
-
             await self.migrate_database(db)
-
             await db.commit()
         logging.info("数据库初始化完成。")
 
     async def create_users_table(self, db):
-        
         await db.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -61,14 +52,12 @@ class DatabaseManager:
                 message_count INTEGER DEFAULT 0
             )
         ''')
-        
         await db.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
         await db.execute('CREATE INDEX IF NOT EXISTS idx_users_verified ON users(is_verified)')
         await db.execute('CREATE INDEX IF NOT EXISTS idx_users_blacklisted ON users(is_blacklisted)')
         await db.execute('CREATE INDEX IF NOT EXISTS idx_users_thread ON users(thread_id)')
 
     async def create_messages_table(self, db):
-        
         await db.execute('''
             CREATE TABLE IF NOT EXISTS messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,7 +80,6 @@ class DatabaseManager:
         await db.execute('CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at)')
 
     async def create_blacklist_table(self, db):
-        
         await db.execute('''
             CREATE TABLE IF NOT EXISTS blacklist (
                 user_id INTEGER PRIMARY KEY,
@@ -109,7 +97,6 @@ class DatabaseManager:
         await db.execute('CREATE INDEX IF NOT EXISTS idx_blacklist_blocked_at ON blacklist(blocked_at)')
 
     async def create_admins_table(self, db):
-        
         await db.execute('''
             CREATE TABLE IF NOT EXISTS admins (
                 user_id INTEGER PRIMARY KEY,
@@ -124,7 +111,6 @@ class DatabaseManager:
         await db.execute('CREATE INDEX IF NOT EXISTS idx_admins_active ON admins(is_active)')
 
     async def create_verification_sessions_table(self, db):
-        
         await db.execute('''
             CREATE TABLE IF NOT EXISTS verification_sessions (
                 user_id INTEGER PRIMARY KEY,
@@ -139,7 +125,6 @@ class DatabaseManager:
         await db.execute('CREATE INDEX IF NOT EXISTS idx_verification_expires ON verification_sessions(expires_at)')
 
     async def create_settings_table(self, db):
-        
         await db.execute('''
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -148,7 +133,6 @@ class DatabaseManager:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        
         default_settings = [
             ('bot_version', '1.0.0', '机器人当前版本'),
             ('welcome_message', '欢迎使用本机器人！', '新用户收到的欢迎消息'),
@@ -164,7 +148,6 @@ class DatabaseManager:
             )
 
     async def create_statistics_table(self, db):
-        
         await db.execute('''
             CREATE TABLE IF NOT EXISTS statistics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -221,18 +204,14 @@ class DatabaseManager:
             return [{"content": row[0], "reason": row[1]} for row in rows]
 
     async def migrate_database(self, db):
-        
         try:
-            
             await db.execute('ALTER TABLE users ADD COLUMN blacklist_strikes INTEGER DEFAULT 0 NOT NULL')
             logging.info("数据库迁移：成功为 'users' 表添加 'blacklist_strikes' 列。")
         except aiosqlite.OperationalError as e:
-            
             if "duplicate column name" not in str(e):
                 raise e
 
         try:
-            
             await db.execute('ALTER TABLE blacklist ADD COLUMN permanent INTEGER DEFAULT 0')
             logging.info("数据库迁移：成功为 'blacklist' 表添加 'permanent' 列。")
         except aiosqlite.OperationalError as e:
@@ -247,7 +226,5 @@ class DatabaseManager:
             logging.info("数据库迁移：成功添加自动回复开关设置。")
         except Exception as e:
             logging.warning(f"添加自动回复设置时出错: {e}")
-
-
 
 db_manager = DatabaseManager()

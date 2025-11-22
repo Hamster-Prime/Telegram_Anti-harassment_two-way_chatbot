@@ -13,25 +13,19 @@ async def post_init(app: Application):
     print(f"Bot Username: {config.BOT_USERNAME} 已设置")
 
 def main():
-
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
     )
     
-    
     db_manager = DatabaseManager(config.DATABASE_PATH)
     asyncio.run(db_manager.initialize())
     
-    
     app = Application.builder().token(config.BOT_TOKEN).post_init(post_init).build()
-    
     
     register_handlers(app)
     
-    
     config.validate()
-    
     
     logging.info("Bot启动中...")
     app.run_polling()

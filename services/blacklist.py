@@ -5,18 +5,14 @@ from database import models as db
 from services.gemini_service import gemini_service
 from config import config
 
-
 pending_unblocks = {}
 
 async def block_user(user_id: int, reason: str, admin_id: int, permanent: bool = False):
     await db.add_to_blacklist(user_id, reason, admin_id, permanent)
-    # 注意：add_to_blacklist 已经会自动增加 blacklist_strikes
-    # 永久封禁时不应该覆盖真实的封禁次数，所以不再设置 99
     return f"用户 {user_id} 已被管理员{'永久' if permanent else ''}拉黑。\n原因: {reason}"
 
 async def unblock_user(user_id: int):
     await db.remove_from_blacklist(user_id)
-    
     await db.set_user_blacklist_strikes(user_id, 0)
     return f"用户 {user_id} 已被管理员解封。"
 
@@ -104,13 +100,11 @@ async def verify_unblock_answer(user_id: int, user_answer: str):
     if user_answer == session['answer']:
         del pending_unblocks[user_id]
         await db.remove_from_blacklist(user_id)
-        
         await db.set_user_blacklist_strikes(user_id, 0)
         return "解封成功！您现在可以正常发送消息了。", True
     else:
         del pending_unblocks[user_id]
         await db.add_to_blacklist(user_id, reason="解封验证失败", blocked_by=config.BOT_ID, permanent=True)
-        # add_to_blacklist 已经会自动增加 blacklist_strikes，不需要再设置为 99
         return "答案错误，解封失败。您已被永久封禁。", False
 
 def _safe_text_for_markdown(text: str) -> str:

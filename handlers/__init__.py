@@ -6,7 +6,6 @@ from .admin_handler import handle_admin_reply, view_filtered
 from config import config
 
 def register_handlers(app: Application):
-    
     app.add_handler(CommandHandler("getid", getid))
     app.add_handler(CommandHandler("start", start, filters=filters.ChatType.PRIVATE))
 
@@ -20,12 +19,10 @@ def register_handlers(app: Application):
         app.add_handler(CommandHandler("view_filtered", view_filtered))
         app.add_handler(CommandHandler("autoreply", autoreply))
         
-        
         app.add_handler(MessageHandler(
             filters.Chat(chat_id=config.FORUM_GROUP_ID) & filters.REPLY & ~filters.COMMAND,
             handle_admin_reply
         ))
-        
         
         app.add_handler(MessageHandler(
             (filters.TEXT | filters.PHOTO | filters.VIDEO | filters.AUDIO | filters.VOICE |
@@ -33,7 +30,6 @@ def register_handlers(app: Application):
             ~filters.COMMAND & filters.ChatType.PRIVATE,
             handle_message
         ))
-        
         
         app.add_handler(CallbackQueryHandler(handle_callback))
     else:

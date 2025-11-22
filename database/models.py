@@ -1,7 +1,6 @@
 from datetime import datetime
 from .db_manager import db_manager
-
-
+from config import config
 
 async def get_user(user_id: int):
     async with db_manager.get_connection() as db:
@@ -50,8 +49,6 @@ async def get_user_by_thread_id(thread_id: int):
                 return dict(zip([col[0] for col in cursor.description], row))
             return None
 
-
-
 async def save_message(user_id: int, message_id: int, content: str, direction: str, media_type: str = None, media_file_id: str = None):
     async with db_manager.get_connection() as db:
         await db.execute('''
@@ -90,8 +87,6 @@ async def get_filtered_messages_count() -> int:
         async with db.execute('SELECT COUNT(*) FROM filtered_messages') as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0
-
-
 
 async def is_blacklisted(user_id: int):
     async with db_manager.get_connection() as db:
@@ -136,8 +131,6 @@ async def get_blacklist():
             rows = await cursor.fetchall()
             if not rows:
                 return []
-            
-            
             cols = [description[0] for description in cursor.description]
             return [dict(zip(cols, row)) for row in rows]
 
@@ -153,7 +146,6 @@ async def get_blacklist_paginated(limit: int = 5, offset: int = 0):
             rows = await cursor.fetchall()
             if not rows:
                 return []
-            
             cols = [description[0] for description in cursor.description]
             return [dict(zip(cols, row)) for row in rows]
 
@@ -165,21 +157,15 @@ async def get_blacklist_count() -> int:
 
 async def set_user_blacklist_strikes(user_id: int, strikes: int):
     async with db_manager.get_connection() as db:
-        
         await db.execute(
             'INSERT OR IGNORE INTO users (user_id, first_name) VALUES (?, ?)',
             (user_id, f"User_{user_id}")
         )
-        
         await db.execute(
             'UPDATE users SET blacklist_strikes = ? WHERE user_id = ?',
             (strikes, user_id)
         )
         await db.commit()
-
-
-
-from config import config
 
 async def is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
@@ -223,7 +209,6 @@ async def get_all_users_paginated(limit: int = 5, offset: int = 0):
             rows = await cursor.fetchall()
             if not rows:
                 return []
-            
             cols = [description[0] for description in cursor.description]
             return [dict(zip(cols, row)) for row in rows]
 

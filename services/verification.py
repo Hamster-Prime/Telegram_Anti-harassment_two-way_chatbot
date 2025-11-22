@@ -4,7 +4,6 @@ from database import models as db
 from config import config
 from services.gemini_service import gemini_service
 
-
 pending_verifications = {}
 
 async def create_verification(user_id: int):
@@ -12,7 +11,6 @@ async def create_verification(user_id: int):
     question = challenge['question']
     correct_answer = challenge['correct_answer']
     options = challenge['options']
-    
     
     existing_attempts = pending_verifications.get(user_id, {}).get('attempts', 0)
     
