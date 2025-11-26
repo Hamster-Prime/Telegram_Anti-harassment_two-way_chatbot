@@ -322,6 +322,25 @@ async def set_autoreply_enabled(enabled: bool):
         )
         await db.commit()
 
+async def get_ai_verification_enabled() -> bool:
+    async with db_manager.get_connection() as db:
+        async with db.execute(
+            'SELECT value FROM settings WHERE key = ?',
+            ('ai_verification_enabled',)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return row[0] == '1'
+            return True # Default to True if not found
+
+async def set_ai_verification_enabled(enabled: bool):
+    async with db_manager.get_connection() as db:
+        await db.execute(
+            'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?',
+            ('1' if enabled else '0', 'ai_verification_enabled')
+        )
+        await db.commit()
+
 async def is_exempted(user_id: int) -> bool:
     async with db_manager.get_connection() as db:
         async with db.execute('''

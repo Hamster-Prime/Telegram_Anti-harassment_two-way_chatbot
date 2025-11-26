@@ -1451,3 +1451,39 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "`/autoreply add 常见问题 这是问题的答案`",
                 parse_mode='Markdown'
             )
+    
+    elif data == "ai_verification_toggle":
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+        
+        is_enabled = await db.get_ai_verification_enabled()
+        await db.set_ai_verification_enabled(not is_enabled)
+        
+        is_enabled = await db.get_ai_verification_enabled()
+        status_text = "已启用" if is_enabled else "已禁用"
+        
+        message = (
+            f"AI验证设置\n\n"
+            f"当前状态: {status_text}\n\n"
+            f"当启用时，使用AI模型生成验证问题。\n"
+            f"当禁用时，使用本地预设的验证问题库。\n\n"
+            f"用法:\n"
+            f"/ai on - 启用AI验证\n"
+            f"/ai off - 禁用AI验证"
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "禁用AI验证" if is_enabled else "启用AI验证",
+                    callback_data="ai_verification_toggle"
+                )
+            ]
+        ]
+        
+        await query.edit_message_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )

@@ -423,3 +423,51 @@ async def autoreply(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "/autoreply delete <ID> - 删除知识条目\n"
             "/autoreply list - 列出所有知识条目"
         )
+
+@admin_only
+async def ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """控制是否使用AI进行验证"""
+    if not context.args:
+        is_enabled = await db.get_ai_verification_enabled()
+        status_text = "已启用" if is_enabled else "已禁用"
+        
+        message = (
+            f"AI验证设置\n\n"
+            f"当前状态: {status_text}\n\n"
+            f"当启用时，使用AI模型生成验证问题。\n"
+            f"当禁用时，使用本地预设的验证问题库。\n\n"
+            f"用法:\n"
+            f"/ai on - 启用AI验证\n"
+            f"/ai off - 禁用AI验证"
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "禁用AI验证" if is_enabled else "启用AI验证",
+                    callback_data=f"ai_verification_toggle"
+                )
+            ]
+        ]
+        
+        await update.message.reply_text(
+            message,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+        return
+    
+    subcommand = context.args[0].lower()
+    
+    if subcommand == "on":
+        await db.set_ai_verification_enabled(True)
+        await update.message.reply_text("AI验证已启用。现在将使用AI模型生成验证问题。")
+    elif subcommand == "off":
+        await db.set_ai_verification_enabled(False)
+        await update.message.reply_text("AI验证已禁用。现在将使用本地预设问题库。")
+    else:
+        await update.message.reply_text(
+            "无效的子命令。用法:\n"
+            "/ai on - 启用AI验证\n"
+            "/ai off - 禁用AI验证"
+        )

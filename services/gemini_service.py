@@ -1,6 +1,7 @@
 from telegram import Message
 from config import config
 from services.model_service import model_service
+from database import models as db
 import json
 import random
 import re
@@ -153,7 +154,8 @@ class GeminiService:
         }
 
     async def generate_unblock_question(self) -> dict:
-        if not model_service.adapter or not model_service.verification_model_name:
+        ai_enabled = await db.get_ai_verification_enabled()
+        if not ai_enabled or not model_service.adapter or not model_service.verification_model_name:
             return self._get_local_question()
 
         prompt = """
@@ -208,7 +210,8 @@ class GeminiService:
             return self._get_local_question()
 
     async def generate_verification_challenge(self) -> dict:
-        if not model_service.adapter or not model_service.verification_model_name:
+        ai_enabled = await db.get_ai_verification_enabled()
+        if not ai_enabled or not model_service.adapter or not model_service.verification_model_name:
             return self._get_local_question()
 
         prompt = """

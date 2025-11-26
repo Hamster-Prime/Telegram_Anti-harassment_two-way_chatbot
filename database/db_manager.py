@@ -243,4 +243,13 @@ class DatabaseManager:
         except Exception as e:
             logging.warning(f"添加自动回复设置时出错: {e}")
 
+        try:
+            await db.execute(
+                'INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)',
+                ('ai_verification_enabled', '1', '是否启用AI生成验证问题 (1=是, 0=否)')
+            )
+            logging.info("数据库迁移：成功添加AI验证开关设置。")
+        except Exception as e:
+            logging.warning(f"添加AI验证设置时出错: {e}")
+
 db_manager = DatabaseManager()
