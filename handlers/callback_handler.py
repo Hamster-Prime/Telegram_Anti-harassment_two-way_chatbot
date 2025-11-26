@@ -1,4 +1,5 @@
 import re
+import secrets
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
@@ -8,6 +9,204 @@ from database import models as db
 from utils.media_converter import sticker_to_image
 from services.thread_manager import get_or_create_thread
 from .user_handler import _resend_message
+from config import config
+from rss import data_manager as rss_data_manager, settings as rss_settings
+from rss import enable_feature as rss_enable_feature, disable_feature as rss_disable_feature
+
+RSS_PANEL_CACHE_KEY = "rss_panel_cache"
+RSS_FEEDS_PER_PAGE = 4
+RSS_DOC_URL = "https://github.com/Hamster-Prime/Telegram_Anti-harassment_two-way_chatbot#-rss-%E8%AE%A2%E9%98%85%E5%8A%9F%E8%83%BD"
+
+
+def _cache_rss_reference(application, kind, payload):
+    token = secrets.token_hex(6)
+    cache = application.bot_data.setdefault(RSS_PANEL_CACHE_KEY, {})
+    if len(cache) >= 500:
+        cache.clear()
+    cache[token] = (kind, payload)
+    return token
+
+
+def _resolve_rss_reference(application, token, expected_kind):
+    cache = application.bot_data.get(RSS_PANEL_CACHE_KEY, {})
+    value = cache.get(token)
+    if not value:
+        return None
+    kind, payload = value
+    if kind != expected_kind:
+        return None
+    return payload
+
+
+def _collect_rss_feeds():
+    entries = []
+    subscriptions = rss_data_manager.get_subscriptions()
+    for chat_id, user_data in subscriptions.items():
+        feeds = user_data.get("rss_feeds", {})
+        for feed_url, feed_data in feeds.items():
+            entries.append((chat_id, feed_url, feed_data))
+    entries.sort(key=lambda item: (item[0], item[2].get("title", "")))
+    return entries
+
+
+def _build_rss_panel_view():
+    enabled = rss_settings.is_enabled()
+    status_text = "已启用" if enabled else "已关闭"
+    lines = [
+        "RSS 订阅功能控制台",
+        "",
+        f"当前状态: {status_text}",
+        f"数据文件: {rss_settings.get_data_file()}",
+        f"检查间隔: {rss_settings.get_check_interval()} 秒",
+        "",
+        "常用命令（私聊使用）：",
+        "/rss_add <url>",
+        "/rss_remove <url|ID>",
+        "/rss_list",
+        "/rss_addkeyword <ID> <关键词>",
+        "/rss_removekeyword <ID> <关键词>",
+        "/rss_listkeywords <ID>",
+        "/rss_removeallkeywords <ID>",
+        "/rss_setfooter [文本]",
+        "/rss_togglepreview",
+    ]
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "关闭 RSS 功能" if enabled else "开启 RSS 功能",
+                callback_data="panel_rss_toggle",
+            )
+        ],
+        [InlineKeyboardButton("查看订阅列表", callback_data="panel_rss_list_page_1")],
+        [InlineKeyboardButton("查看 RSS 文档", url=RSS_DOC_URL)],
+        [InlineKeyboardButton("返回主面板", callback_data="panel_back")],
+    ]
+
+    return "\n".join(lines), InlineKeyboardMarkup(keyboard)
+
+
+def _build_rss_list_view(application, page: int):
+    feeds = _collect_rss_feeds()
+    total = len(feeds)
+
+    if total == 0:
+        keyboard = [
+            [InlineKeyboardButton("返回 RSS 控制台", callback_data="panel_rss")],
+            [InlineKeyboardButton("返回主面板", callback_data="panel_back")],
+        ]
+        return "当前没有任何 RSS 订阅。", InlineKeyboardMarkup(keyboard)
+
+    per_page = RSS_FEEDS_PER_PAGE
+    total_pages = (total + per_page - 1) // per_page
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * per_page
+    subset = feeds[start : start + per_page]
+
+    lines = [f"RSS 订阅列表 (第 {page}/{total_pages} 页)", ""]
+    keyboard_rows = []
+
+    for idx, (chat_id, feed_url, feed_data) in enumerate(subset, start=start + 1):
+        title = feed_data.get("title", "未命名订阅")
+        keywords = feed_data.get("keywords", [])
+        keywords_text = ", ".join(keywords) if keywords else "无"
+        lines.extend(
+            [
+                f"{idx}. 用户 {chat_id}",
+                f"   标题: {title}",
+                f"   链接: {feed_url}",
+                f"   关键词: {keywords_text}",
+                "",
+            ]
+        )
+        token = _cache_rss_reference(
+            application,
+            "feed",
+            {"chat_id": chat_id, "feed_url": feed_url},
+        )
+        keyboard_rows.append(
+            [
+                InlineKeyboardButton(
+                    f"管理 #{idx}",
+                    callback_data=f"panel_rss_feed_{token}",
+                )
+            ]
+        )
+
+    nav_buttons = []
+    if page > 1:
+        nav_buttons.append(
+            InlineKeyboardButton("上一页", callback_data=f"panel_rss_list_page_{page-1}")
+        )
+    if page < total_pages:
+        nav_buttons.append(
+            InlineKeyboardButton("下一页", callback_data=f"panel_rss_list_page_{page+1}")
+        )
+    if nav_buttons:
+        keyboard_rows.append(nav_buttons)
+
+    keyboard_rows.append([InlineKeyboardButton("返回 RSS 控制台", callback_data="panel_rss")])
+    keyboard_rows.append([InlineKeyboardButton("返回主面板", callback_data="panel_back")])
+
+    return "\n".join(lines).strip(), InlineKeyboardMarkup(keyboard_rows)
+
+
+def _build_rss_feed_detail(application, chat_id: str, feed_url: str):
+    subscriptions = rss_data_manager.get_subscriptions()
+    feed_data = (
+        subscriptions.get(chat_id, {})
+        .get("rss_feeds", {})
+        .get(feed_url)
+    )
+    if not feed_data:
+        return None, None
+
+    title = feed_data.get("title", "未命名订阅")
+    keywords = feed_data.get("keywords", [])
+
+    lines = [
+        "订阅详情",
+        "",
+        f"用户 ID: {chat_id}",
+        f"标题: {title}",
+        f"链接: {feed_url}",
+    ]
+
+    if keywords:
+        lines.append("关键词：")
+        lines.extend([f"- {kw}" for kw in keywords])
+    else:
+        lines.append("关键词：无（推送所有更新）")
+
+    keyboard_rows = []
+    remove_token = _cache_rss_reference(
+        application,
+        "feed",
+        {"chat_id": chat_id, "feed_url": feed_url},
+    )
+    keyboard_rows.append(
+        [InlineKeyboardButton("移除该订阅", callback_data=f"panel_rss_remove_{remove_token}")]
+    )
+
+    for kw in keywords:
+        kw_token = _cache_rss_reference(
+            application,
+            "keyword",
+            {"chat_id": chat_id, "feed_url": feed_url, "keyword": kw},
+        )
+        keyboard_rows.append(
+            [
+                InlineKeyboardButton(
+                    f"删除关键词：{kw}",
+                    callback_data=f"panel_rss_kwrm_{kw_token}",
+                )
+            ]
+        )
+
+    keyboard_rows.append([InlineKeyboardButton("返回订阅列表", callback_data="panel_rss_list_page_1")])
+    keyboard_rows.append([InlineKeyboardButton("返回 RSS 控制台", callback_data="panel_rss")])
+
+    return "\n".join(lines), InlineKeyboardMarkup(keyboard_rows)
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -150,6 +349,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("黑名单管理", callback_data="panel_blacklist_page_1"), InlineKeyboardButton("所有用户信息", callback_data="panel_stats")],
             [InlineKeyboardButton("被过滤消息", callback_data="panel_filtered_page_1"), InlineKeyboardButton("自动回复管理", callback_data="panel_autoreply")],
             [InlineKeyboardButton("豁免名单管理", callback_data="panel_exemptions_page_1"), InlineKeyboardButton("网络测试管理", callback_data="panel_network_test")],
+            [InlineKeyboardButton("RSS 功能管理", callback_data="panel_rss")],
         ]
         
         await query.edit_message_text(
@@ -363,6 +563,114 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )
+    
+    elif data == "panel_rss":
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+
+        message, keyboard = _build_rss_panel_view()
+        await query.edit_message_text(message, reply_markup=keyboard)
+    
+    elif data == "panel_rss_toggle":
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+
+        app = context.application
+        if rss_settings.is_enabled():
+            changed = rss_disable_feature(app)
+            if changed:
+                await query.answer("RSS 功能已关闭", show_alert=True)
+        else:
+            changed = rss_enable_feature(app)
+            if changed:
+                await query.answer("RSS 功能已开启", show_alert=True)
+
+        message, keyboard = _build_rss_panel_view()
+        await query.edit_message_text(message, reply_markup=keyboard)
+    
+    elif data.startswith("panel_rss_list_page_"):
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+
+        try:
+            page = int(data.split("_")[-1])
+        except (ValueError, IndexError):
+            await query.answer("无效的页码。", show_alert=True)
+            return
+
+        message, keyboard = _build_rss_list_view(context.application, page)
+        await query.edit_message_text(message, reply_markup=keyboard)
+    
+    elif data.startswith("panel_rss_feed_"):
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+
+        token = data.split("_")[-1]
+        ref = _resolve_rss_reference(context.application, token, "feed")
+        if not ref:
+            await query.answer("未找到订阅引用，请重新打开列表。", show_alert=True)
+            return
+
+        chat_id = str(ref["chat_id"])
+        feed_url = ref["feed_url"]
+        message, keyboard = _build_rss_feed_detail(context.application, chat_id, feed_url)
+        if not message:
+            await query.answer("订阅不存在或已被移除。", show_alert=True)
+            message, keyboard = _build_rss_list_view(context.application, 1)
+        await query.edit_message_text(message, reply_markup=keyboard)
+    
+    elif data.startswith("panel_rss_remove_"):
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+
+        token = data.split("_")[-1]
+        ref = _resolve_rss_reference(context.application, token, "feed")
+        if not ref:
+            await query.answer("未找到订阅引用。", show_alert=True)
+            return
+
+        chat_id = str(ref["chat_id"])
+        feed_url = ref["feed_url"]
+        data_file = context.application.bot_data.get("rss_data_file", config.RSS_DATA_FILE)
+        success = rss_data_manager.remove_feed(chat_id, feed_url, data_file)
+        if success:
+            await query.answer("订阅已移除。", show_alert=True)
+        else:
+            await query.answer("订阅不存在。", show_alert=True)
+
+        message, keyboard = _build_rss_list_view(context.application, 1)
+        await query.edit_message_text(message, reply_markup=keyboard)
+    
+    elif data.startswith("panel_rss_kwrm_"):
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+
+        token = data.split("_")[-1]
+        ref = _resolve_rss_reference(context.application, token, "keyword")
+        if not ref:
+            await query.answer("未找到关键词引用。", show_alert=True)
+            return
+
+        chat_id = str(ref["chat_id"])
+        feed_url = ref["feed_url"]
+        keyword = ref["keyword"]
+        data_file = context.application.bot_data.get("rss_data_file", config.RSS_DATA_FILE)
+        success = rss_data_manager.remove_keyword(chat_id, feed_url, keyword, data_file)
+        if success:
+            await query.answer(f"已移除关键词: {keyword}", show_alert=True)
+        else:
+            await query.answer("关键词不存在。", show_alert=True)
+
+        message, keyboard = _build_rss_feed_detail(context.application, chat_id, feed_url)
+        if not message:
+            message, keyboard = _build_rss_list_view(context.application, 1)
+        await query.edit_message_text(message, reply_markup=keyboard)
     
     elif data == "panel_autoreply_toggle":
         if not await db.is_admin(user_id):

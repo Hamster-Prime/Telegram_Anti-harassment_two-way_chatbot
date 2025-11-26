@@ -28,6 +28,8 @@ env/
 # 环境变量
 .env
 network_test_config.json
+rss_subscriptions.json
+rss_settings.json
 
 # 数据库
 data/*.db

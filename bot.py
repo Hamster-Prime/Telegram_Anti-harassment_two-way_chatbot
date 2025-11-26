@@ -4,6 +4,7 @@ from telegram import Update
 from telegram.ext import Application
 from config import config
 from handlers import register_handlers
+from rss import setup as setup_rss
 from database.db_manager import DatabaseManager
 
 async def post_init(app: Application):
@@ -24,6 +25,7 @@ def main():
     app = Application.builder().token(config.BOT_TOKEN).post_init(post_init).build()
     
     register_handlers(app)
+    setup_rss(app)
     
     config.validate()
     

@@ -26,6 +26,13 @@ class Config:
     MAX_VERIFICATION_ATTEMPTS = int(os.getenv('MAX_VERIFICATION_ATTEMPTS', '3'))
     
     MAX_MESSAGES_PER_MINUTE = int(os.getenv('MAX_MESSAGES_PER_MINUTE', '30'))
+
+    RSS_ENABLED = os.getenv('RSS_ENABLED', 'false').lower() == 'true'
+    RSS_DATA_FILE = os.getenv('RSS_DATA_FILE', './data/rss_subscriptions.json')
+    RSS_CHECK_INTERVAL = int(os.getenv('RSS_CHECK_INTERVAL', '300'))
+    RSS_AUTHORIZED_USER_IDS = [
+        int(user_id) for user_id in os.getenv('RSS_AUTHORIZED_USER_IDS', '').split(',') if user_id
+    ]
     
     @classmethod
     def validate(cls):

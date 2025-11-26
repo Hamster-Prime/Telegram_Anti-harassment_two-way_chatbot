@@ -38,6 +38,7 @@
 | 🔐 **权限控制** | 基于 Telegram ID 的多管理员权限系统，确保只有授权人员才能执行管理操作。 |
 | 🤖 **智能自动回复** | 基于知识库的 AI 自动回复功能，在内容审查通过后自动回答用户问题，支持 Markdown 格式，管理员可随时查看自动回复内容。 |
 | 🌐 **网络测试工具** | 集成网络测试功能，支持通过远程服务器进行 Ping 测试和路由追踪（NextTrace），支持 ICMP 和 TCP 模式，方便进行网络诊断。 |
+| 📰 **RSS 订阅推送** | 在私聊中管理 RSS 列表、关键词和自定义页脚，并按需推送最新条目。 |
 
 ---
 
@@ -474,6 +475,34 @@ python bot.py
 - 首次使用前需要管理员先添加测试服务器
 - 普通用户需要管理员授权才能使用网络测试功能
 - 路由追踪功能需要服务器上安装 NextTrace 工具（可使用 `/install_nexttrace` 自动安装）
+
+---
+
+### 📰 RSS 订阅功能
+
+本项目已整合高并发 RSS 机器人，可直接在 Telegram 私聊里管理订阅并按关键词过滤更新。
+
+#### 功能特点
+- 支持任意数量的 RSS 链接，自动并发轮询，新增条目即时推送
+- 为每个订阅源配置关键词、定制页脚和链接预览策略
+
+在 `.env` 中添加 `RSS_CHECK_INTERVAL=300` 控制轮询间隔（秒），建议 ≥ 120
+
+> 提示：初次运行会在 `RSS_DATA_FILE` 指定的位置创建 JSON 文件，文件可备份以迁移订阅数据。
+> 管理员也可以随时在 `/panel` → “RSS 功能管理” 中开关功能、查看订阅并执行删除操作。
+
+#### 命令列表（仅限私聊）
+- `/rss_add <url>` `/rss_remove <url|ID>` `/rss_list`：管理订阅源
+- `/rss_addkeyword <id> <关键词>` `/rss_removekeyword <id> <关键词>` `/rss_listkeywords <id>` `/rss_removeallkeywords <id>`：维护关键词过滤
+- `/rss_setfooter [文本]` `/rss_togglepreview`：设置自定义页脚与链接预览
+- `/rss_add_user <user_id>` `/rss_rm_user <user_id>`：仅管理员可用，用于维护 RSS 授权用户列表
+
+#### 工作流程
+1. 用户通过命令添加订阅源，机器人会在后台解析标题并记录 `last_entry_id`
+2. 轮询任务按 `RSS_CHECK_INTERVAL` 间隔并发抓取所有订阅
+3. 新条目会按关键词过滤，最多推送 5 条；剩余条目使用摘要提示防止刷屏
+4. 消息会附带自定义页脚并遵循是否显示链接预览的设定
+5. RSS 命令仅对 `ADMIN_IDS` 以及 `RSS_AUTHORIZED_USER_IDS` 中的用户生效
 
 ---
 
