@@ -85,8 +85,29 @@ ADMIN_IDS=123456789,987654321
 
 # --- 可选配置 ---
 
-# Gemini API配置 (如果您需要使用AI相关功能)
-# 从 Google AI Studio 获取
+# AI模型配置 (支持多种API提供商)
+# AI提供商: gemini, openai, claude, custom
+# 默认使用 gemini (向后兼容)
+AI_PROVIDER=gemini
+
+# API密钥 (必需)
+# 对于 gemini: 从 Google AI Studio 获取
+# 对于 openai: 从 OpenAI 获取
+# 对于 claude: 从 Anthropic 获取
+# 对于 custom: 您的自定义API密钥
+AI_API_KEY=your_api_key_here
+
+# 自定义API基础URL (仅在使用 custom 提供商时必需)
+# 例如: https://api.example.com/v1
+AI_BASE_URL=
+
+# 模型名称配置 (可选，使用默认值如果不设置)
+# 内容过滤使用的模型
+AI_FILTER_MODEL=
+# 验证问题生成使用的模型
+AI_VERIFICATION_MODEL=
+
+# 向后兼容的Gemini配置 (如果设置了AI_API_KEY，此配置会被忽略)
 GEMINI_API_KEY=your_gemini_api_key_here
 
 # 是否启用AI自动识别垃圾信息和恶意内容
@@ -480,6 +501,60 @@ python bot.py
 ## 🔧 配置说明
 
 所有配置项均通过 `.env` 文件进行管理。详细的变量说明请参考 [快速开始](#-快速开始-docker-推荐) 部分的 `.env` 文件示例。
+
+### 🤖 AI模型配置
+
+本机器人支持多种AI模型API提供商，您可以根据需要选择合适的模型：
+
+#### 支持的提供商
+
+1. **Gemini (Google)** - 默认提供商
+   ```env
+   AI_PROVIDER=gemini
+   AI_API_KEY=your_gemini_api_key
+   # 可选：指定模型名称
+   AI_FILTER_MODEL=gemini-2.5-flash
+   AI_VERIFICATION_MODEL=gemini-2.5-flash-lite
+   ```
+   - 获取API密钥: [Google AI Studio](https://aistudio.google.com/api-keys)
+   - 默认模型: `gemini-2.5-flash` (过滤), `gemini-2.5-flash-lite` (验证)
+
+2. **OpenAI**
+   ```env
+   AI_PROVIDER=openai
+   AI_API_KEY=your_openai_api_key
+   # 可选：指定模型名称
+   AI_FILTER_MODEL=gpt-4o-mini
+   AI_VERIFICATION_MODEL=gpt-4o-mini
+   ```
+   - 获取API密钥: [OpenAI Platform](https://platform.openai.com/api-keys)
+   - 默认模型: `gpt-4o-mini`
+
+3. **Claude (Anthropic)**
+   ```env
+   AI_PROVIDER=claude
+   AI_API_KEY=your_anthropic_api_key
+   # 可选：指定模型名称
+   AI_FILTER_MODEL=claude-3-haiku-20240307
+   AI_VERIFICATION_MODEL=claude-3-haiku-20240307
+   ```
+   - 获取API密钥: [Anthropic Console](https://console.anthropic.com/)
+   - 默认模型: `claude-3-haiku-20240307`
+
+4. **自定义API (OpenAI兼容)**
+   ```env
+   AI_PROVIDER=custom
+   AI_API_KEY=your_custom_api_key
+   AI_BASE_URL=https://api.example.com/v1
+   AI_FILTER_MODEL=your-model-name
+   AI_VERIFICATION_MODEL=your-model-name
+   ```
+   - 适用于任何兼容OpenAI API格式的第三方服务
+   - 必须提供 `AI_BASE_URL` 和 `AI_FILTER_MODEL`
+
+#### 向后兼容
+
+如果您之前使用 `GEMINI_API_KEY` 配置，系统会自动识别并使用Gemini作为提供商，无需修改现有配置。
 
 ---
 

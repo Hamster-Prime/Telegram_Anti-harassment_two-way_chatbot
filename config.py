@@ -10,7 +10,17 @@ class Config:
     FORUM_GROUP_ID = int(os.getenv('FORUM_GROUP_ID') or 0)
     ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '').split(',') if id]
     
+    # AI模型配置
+    # 支持的提供商: gemini, openai, claude, custom
+    AI_PROVIDER = os.getenv('AI_PROVIDER', 'gemini').lower()
+    AI_API_KEY = os.getenv('AI_API_KEY') or os.getenv('GEMINI_API_KEY')  # 向后兼容
+    AI_BASE_URL = os.getenv('AI_BASE_URL')  # 自定义API时必需
+    AI_FILTER_MODEL = os.getenv('AI_FILTER_MODEL')  # 内容过滤模型
+    AI_VERIFICATION_MODEL = os.getenv('AI_VERIFICATION_MODEL')  # 验证问题生成模型
+    
+    # 向后兼容的Gemini配置
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+    
     ENABLE_AI_FILTER = os.getenv('ENABLE_AI_FILTER', 'true').lower() == 'true'
     AI_CONFIDENCE_THRESHOLD = int(os.getenv('AI_CONFIDENCE_THRESHOLD', '70'))
     
