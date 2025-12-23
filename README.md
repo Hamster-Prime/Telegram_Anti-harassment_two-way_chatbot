@@ -29,7 +29,7 @@
 | 特性 | 描述 |
 | :--- | :--- |
 | 💬 **话题群组管理** | 利用 Telegram Forum 功能，为每位用户创建独立对话线程，自动展示用户信息，便于消息追溯与管理。 |
-| 🤖 **AI 智能筛选** | 集成 Google Gemini API，可智能识别潜在的垃圾信息或恶意内容，并用于生成多样化的人机验证问题。 |
+| 🤖 **AI 智能筛选** | 集成 Google Gemini API 及 OpenAI (兼容) API，可智能识别潜在的垃圾信息或恶意内容，并用于生成多样化的人机验证问题。支持动态切换模型和多模态识别。 |
 | 🛡️ **人机验证系统** | 新用户首次交互时需通过 AI 生成的验证问题，有效拦截自动化机器人骚扰。 |
 | ⚡ **高性能处理** | 基于 `asyncio` 的异步消息队列和多 Worker 并行处理机制，轻松应对高并发场景，杜绝消息堵塞。 |
 | 🖼️ **多媒体支持** | 无缝转发图片、视频、音频、文档等多种媒体格式，并完整保留 Markdown 格式。 |
@@ -89,6 +89,10 @@ ADMIN_IDS=123456789,987654321
 # Gemini API配置 (如果您需要使用AI相关功能)
 # 从 Google AI Studio 获取
 GEMINI_API_KEY=your_gemini_api_key_here
+
+# OpenAI API配置 (可选)
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_BASE_URL=https://api.openai.com/v1
 
 # 是否启用AI自动识别垃圾信息和恶意内容
 ENABLE_AI_FILTER=true

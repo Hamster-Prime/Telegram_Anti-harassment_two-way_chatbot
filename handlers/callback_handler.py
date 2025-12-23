@@ -571,6 +571,198 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         message, keyboard = _build_rss_panel_view()
         await query.edit_message_text(message, reply_markup=keyboard)
+
+    elif data == "panel_ai_settings":
+        if not await db.is_admin(user_id):
+            await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
+            return
+            
+        async with db.db_manager.get_connection() as conn:
+             cursor = await conn.execute("""
+                SELECT key, value FROM settings 
+                WHERE key IN (
+                    'ai_provider', 
+                    'gemini_model_filter', 'gemini_model_verification', 'gemini_model_autoreply',
+                    'openai_model_filter', 'openai_model_verification', 'openai_model_autoreply'
+                )
+             """)
+             settings = {row[0]: row[1] for row in await cursor.fetchall()}
+             
+        current_provider = settings.get('ai_provider', 'gemini')
+        
+        provider_name = "Gemini" if current_provider == 'gemini' else "OpenAI"
+        
+        message = (
+            f"🤖 **AI 模型设置**\n\n"
+            f"当前提供商: `{provider_name}`\n\n"
+            f"**Gemini 模型**:\n"
+            f"• 审查: `{settings.get('gemini_model_filter', 'N/A')}`\n"
+            f"• 验证: `{settings.get('gemini_model_verification', 'N/A')}`\n"
+            f"• 回复: `{settings.get('gemini_model_autoreply', 'N/A')}`\n\n"
+            f"**OpenAI 模型**:\n"
+            f"• 审查: `{settings.get('openai_model_filter', 'N/A')}`\n"
+            f"• 验证: `{settings.get('openai_model_verification', 'N/A')}`\n"
+            f"• 回复: `{settings.get('openai_model_autoreply', 'N/A')}`\n\n"
+            f"请选择要配置的项目:"
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(f"{'✅ ' if current_provider == 'gemini' else ''}使用 Gemini", callback_data="ai_set_provider_gemini"),
+                InlineKeyboardButton(f"{'✅ ' if current_provider == 'openai' else ''}使用 OpenAI", callback_data="ai_set_provider_openai")
+            ],
+            [
+                InlineKeyboardButton("配置 Gemini 模型", callback_data="ai_config_models_gemini"),
+                InlineKeyboardButton("配置 OpenAI 模型", callback_data="ai_config_models_openai")
+            ],
+            [InlineKeyboardButton("返回主面板", callback_data="panel_back")]
+        ]
+        
+        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    elif data.startswith("ai_set_provider_"):
+        if not await db.is_admin(user_id): return
+        
+        new_provider = data.split("_")[3]
+        async with db.db_manager.get_connection() as conn:
+            await conn.execute("UPDATE settings SET value = ? WHERE key = 'ai_provider'", (new_provider,))
+            await conn.commit()
+            
+        await query.answer(f"已切换 AI 提供商为 {new_provider.upper()}")
+        
+        async with db.db_manager.get_connection() as conn:
+             cursor = await conn.execute("""
+                SELECT key, value FROM settings 
+                WHERE key IN (
+                    'ai_provider', 
+                    'gemini_model_filter', 'gemini_model_verification', 'gemini_model_autoreply',
+                    'openai_model_filter', 'openai_model_verification', 'openai_model_autoreply'
+                )
+             """)
+             settings = {row[0]: row[1] for row in await cursor.fetchall()}
+             
+        current_provider = settings.get('ai_provider', 'gemini')
+        provider_name = "Gemini" if current_provider == 'gemini' else "OpenAI"
+        
+        message = (
+            f"🤖 **AI 模型设置**\n\n"
+            f"当前提供商: `{provider_name}`\n\n"
+            f"**Gemini 模型**:\n"
+            f"• 审查: `{settings.get('gemini_model_filter', 'N/A')}`\n"
+            f"• 验证: `{settings.get('gemini_model_verification', 'N/A')}`\n"
+            f"• 回复: `{settings.get('gemini_model_autoreply', 'N/A')}`\n\n"
+            f"**OpenAI 模型**:\n"
+            f"• 审查: `{settings.get('openai_model_filter', 'N/A')}`\n"
+            f"• 验证: `{settings.get('openai_model_verification', 'N/A')}`\n"
+            f"• 回复: `{settings.get('openai_model_autoreply', 'N/A')}`\n\n"
+            f"请选择要配置的项目:"
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(f"{'✅ ' if current_provider == 'gemini' else ''}使用 Gemini", callback_data="ai_set_provider_gemini"),
+                InlineKeyboardButton(f"{'✅ ' if current_provider == 'openai' else ''}使用 OpenAI", callback_data="ai_set_provider_openai")
+            ],
+            [
+                InlineKeyboardButton("配置 Gemini 模型", callback_data="ai_config_models_gemini"),
+                InlineKeyboardButton("配置 OpenAI 模型", callback_data="ai_config_models_openai")
+            ],
+            [InlineKeyboardButton("返回主面板", callback_data="panel_back")]
+        ]
+        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+    elif data.startswith("ai_config_models_"):
+        if not await db.is_admin(user_id): return
+        
+        provider_type = data.split("_")[3]
+        
+        message = f"请选择要配置的 {provider_type.upper()} 功能模型:"
+        
+        keyboard = [
+            [InlineKeyboardButton("内容审查模型", callback_data=f"ai_select_model_{provider_type}_filter")],
+            [InlineKeyboardButton("验证码生成模型", callback_data=f"ai_select_model_{provider_type}_verification")],
+            [InlineKeyboardButton("自动回复模型", callback_data=f"ai_select_model_{provider_type}_autoreply")],
+            [InlineKeyboardButton("返回设置", callback_data="panel_ai_settings")]
+        ]
+        
+        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("ai_select_model_"):
+        if not await db.is_admin(user_id): return
+        
+        parts = data.split("_")
+        provider_type = parts[3]
+        feature_type = parts[4]
+        
+        from services.ai_service import ai_service
+        
+        await query.answer("正在获取模型列表...", show_alert=False)
+        
+        try:
+            models = await ai_service.get_available_models(provider_type)
+        except Exception as e:
+            await query.answer(f"获取模型失败: {e}", show_alert=True)
+            return
+
+        if not models:
+             await query.answer("未能获取到模型列表，请检查 API Key 配置。", show_alert=True)
+             return
+        
+        keyboard = []
+        
+        p_code = 'g' if provider_type == 'gemini' else 'o'
+        f_map = {'filter': 'f', 'verification': 'v', 'autoreply': 'a'}
+        f_code = f_map.get(feature_type, 'f')
+
+        for model in models[:20]:
+             keyboard.append([InlineKeyboardButton(model, callback_data=f"setm:{p_code}:{f_code}:{model}")])
+        
+        keyboard.append([InlineKeyboardButton("返回上一级", callback_data=f"ai_config_models_{provider_type}")])
+        
+        feature_name_map = {
+            'filter': '内容审查',
+            'verification': '验证码生成',
+            'autoreply': '自动回复'
+        }
+        feature_name = feature_name_map.get(feature_type, feature_type)
+        
+        await query.edit_message_text(
+            f"请选择 {provider_type.upper()} {feature_name} 模型:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif data.startswith("setm:"):
+        if not await db.is_admin(user_id): return
+        
+        try:
+            _, p_code, f_code, model_name = data.split(":", 3)
+        except ValueError:
+            await query.answer("无效的请求数据", show_alert=True)
+            return
+            
+        p_map = {'g': 'gemini', 'o': 'openai'}
+        f_map = {'f': 'filter', 'v': 'verification', 'a': 'autoreply'}
+        
+        provider_type = p_map.get(p_code, 'gemini')
+        feature_type = f_map.get(f_code, 'filter')
+        
+        setting_key = f"{provider_type}_model_{feature_type}"
+        
+        async with db.db_manager.get_connection() as conn:
+            await conn.execute("UPDATE settings SET value = ? WHERE key = ?", (model_name, setting_key))
+            await conn.commit()
+            
+        await query.answer(f"已设置 {provider_type.upper()} {feature_type} 模型为 {model_name}")
+        
+        message = f"请选择要配置的 {provider_type.upper()} 功能模型:"
+        keyboard = [
+            [InlineKeyboardButton("内容审查模型", callback_data=f"ai_select_model_{provider_type}_filter")],
+            [InlineKeyboardButton("验证码生成模型", callback_data=f"ai_select_model_{provider_type}_verification")],
+            [InlineKeyboardButton("自动回复模型", callback_data=f"ai_select_model_{provider_type}_autoreply")],
+            [InlineKeyboardButton("返回设置", callback_data="panel_ai_settings")]
+        ]
+        await query.edit_message_text(message, reply_markup=InlineKeyboardMarkup(keyboard))
+
     
     elif data == "panel_rss_toggle":
         if not await db.is_admin(user_id):

@@ -4,8 +4,6 @@ from .user_handler import handle_message
 from .callback_handler import handle_callback
 from .admin_handler import handle_admin_reply, view_filtered
 from config import config
-
-# 导入网络测试命令
 from network_test.commands import (
     ping_command, nexttrace_command, add_user_command, rm_user_command,
     add_server_command, rm_server_command, install_nexttrace_command

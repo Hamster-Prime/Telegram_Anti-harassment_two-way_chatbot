@@ -140,7 +140,16 @@ class DatabaseManager:
             ('verification_enabled', '1', '是否启用新用户验证 (1=是, 0=否)'),
             ('ai_filter_enabled', '1', '是否启用AI垃圾消息过滤 (1=是, 0=否)'),
             ('max_message_length', '4096', '允许接收的最大消息长度'),
-            ('queue_max_size', '1000', '内部消息处理队列的最大容量')
+            ('queue_max_size', '1000', '内部消息处理队列的最大容量'),
+            ('ai_provider', 'gemini', '当前使用的AI提供商 (gemini, openai)'),
+            
+            ('gemini_model_filter', 'gemini-2.0-flash', 'Gemini 内容审查模型'),
+            ('gemini_model_verification', 'gemini-2.0-flash-lite', 'Gemini 验证码生成模型'),
+            ('gemini_model_autoreply', 'gemini-2.0-flash', 'Gemini 自动回复模型'),
+
+            ('openai_model_filter', 'gpt-3.5-turbo', 'OpenAI 内容审查模型'),
+            ('openai_model_verification', 'gpt-3.5-turbo', 'OpenAI 验证码生成模型'),
+            ('openai_model_autoreply', 'gpt-3.5-turbo', 'OpenAI 自动回复模型')
         ]
         for key, value, description in default_settings:
             await db.execute(
@@ -242,5 +251,22 @@ class DatabaseManager:
             logging.info("数据库迁移：成功添加自动回复开关设置。")
         except Exception as e:
             logging.warning(f"添加自动回复设置时出错: {e}")
+
+        try:
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('ai_provider', 'gemini', '当前使用的AI提供商 (gemini, openai)'))
+            
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('gemini_model_filter', 'gemini-2.0-flash', 'Gemini 内容审查模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('gemini_model_verification', 'gemini-2.0-flash-lite', 'Gemini 验证码生成模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('gemini_model_autoreply', 'gemini-2.0-flash', 'Gemini 自动回复模型'))
+
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('openai_model_filter', 'gpt-3.5-turbo', 'OpenAI 内容审查模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('openai_model_verification', 'gpt-3.5-turbo', 'OpenAI 验证码生成模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('openai_model_autoreply', 'gpt-3.5-turbo', 'OpenAI 自动回复模型'))
+
+            await db.execute("DELETE FROM settings WHERE key IN ('openai_model', 'gemini_model')")
+
+            logging.info("数据库迁移：成功添加细分AI设置。")
+        except Exception as e:
+            logging.warning(f"添加AI设置时出错: {e}")
 
 db_manager = DatabaseManager()

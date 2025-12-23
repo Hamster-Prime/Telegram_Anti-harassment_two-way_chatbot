@@ -154,7 +154,7 @@ async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("黑名单管理", callback_data="panel_blacklist_page_1"), InlineKeyboardButton("所有用户信息", callback_data="panel_stats")],
         [InlineKeyboardButton("被过滤消息", callback_data="panel_filtered_page_1"), InlineKeyboardButton("自动回复管理", callback_data="panel_autoreply")],
         [InlineKeyboardButton("豁免名单管理", callback_data="panel_exemptions_page_1"), InlineKeyboardButton("网络测试管理", callback_data="panel_network_test")],
-        [InlineKeyboardButton("RSS 功能管理", callback_data="panel_rss")],
+        [InlineKeyboardButton("RSS 功能管理", callback_data="panel_rss"), InlineKeyboardButton("AI 模型设置", callback_data="panel_ai_settings")],
     ]
     
     await update.message.reply_text(

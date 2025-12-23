@@ -11,6 +11,10 @@ class Config:
     ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '').split(',') if id]
     
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+    
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    OPENAI_BASE_URL = os.getenv('OPENAI_BASE_URL', 'https://api.openai.com/v1')
+    
     ENABLE_AI_FILTER = os.getenv('ENABLE_AI_FILTER', 'true').lower() == 'true'
     AI_CONFIDENCE_THRESHOLD = int(os.getenv('AI_CONFIDENCE_THRESHOLD', '70'))
     
