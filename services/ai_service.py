@@ -72,7 +72,7 @@ class GeminiProvider(AIProvider):
             return default
 
     async def analyze_message(self, text: str, image_bytes: bytes = None) -> dict:
-        model_name = await self._get_model_name('gemini_model_filter', 'gemini-2.0-flash')
+        model_name = await self._get_model_name('gemini_model_filter', 'gemini-2.5-flash')
         content = []
         prompt_parts = [
             "你是一个内容审查员。你的任务是分析提供给你的文本和/或图片内容，并判断其是否包含垃圾信息、恶意软件、钓鱼链接、不当言论、辱骂、攻击性词语或任何违反安全政策的内容。",
@@ -122,7 +122,7 @@ class GeminiProvider(AIProvider):
             return {"is_spam": False, "reason": "Analysis failed"}
 
     async def generate_verification_challenge(self) -> dict:
-        model_name = await self._get_model_name('gemini_model_verification', 'gemini-2.0-flash-lite')
+        model_name = await self._get_model_name('gemini_model_verification', 'gemini-2.5-flash-lite')
         prompt = """
         # 角色
         你是一个人机验证（CAPTCHA）问题生成器。
@@ -192,7 +192,7 @@ class GeminiProvider(AIProvider):
         }
 
     async def generate_autoreply(self, user_message: str, knowledge_base_content: str) -> str:
-        model_name = await self._get_model_name('gemini_model_autoreply', 'gemini-2.0-flash')
+        model_name = await self._get_model_name('gemini_model_autoreply', 'gemini-2.5-flash')
         if not knowledge_base_content or knowledge_base_content.strip() == "":
             return None
 
@@ -273,7 +273,7 @@ class OpenAIProvider(AIProvider):
             return default
 
     async def analyze_message(self, text: str, image_bytes: bytes = None) -> dict:
-        model_name = await self._get_model_name('openai_model_filter', 'gpt-3.5-turbo')
+        model_name = await self._get_model_name('openai_model_filter', 'gpt-4.1')
         messages = [
             {"role": "system", "content": "你是一个内容审查员。你的任务是分析提供给你的文本和/或图片内容，并判断其是否包含垃圾信息、恶意软件、钓鱼链接、不当言论、辱骂、攻击性词语或任何违反安全政策的内容。\n请严格按照要求，仅以JSON格式返回你的分析结果，不要包含任何额外的解释或标记。\n**输出格式**: 你必须且只能以严格的JSON格式返回你的分析结果，不得包含任何解释性文字或代码块标记。\n**JSON结构**:\n```json\n{\n  \"is_spam\": boolean,\n  \"reason\": \"string\"\n}\n```\n*   `is_spam`: 如果内容违反**任何一条**安全策略，则为 `true`；如果内容完全安全，则为 `false`。\n*   `reason`: 用一句话精准概括判断依据。如果违规，请明确指出违规的类型。如果安全，此字段固定为 `\"内容未发现违规。\"`"},
             {"role": "user", "content": []}
@@ -313,7 +313,7 @@ class OpenAIProvider(AIProvider):
             return {"is_spam": False, "reason": "Analysis failed"}
 
     async def generate_verification_challenge(self) -> dict:
-        model_name = await self._get_model_name('openai_model_verification', 'gpt-3.5-turbo')
+        model_name = await self._get_model_name('openai_model_verification', 'gpt-4.1-mini')
         prompt = """
         # 角色
         你是一个人机验证（CAPTCHA）问题生成器。
@@ -343,11 +343,12 @@ class OpenAIProvider(AIProvider):
         try:
             response = await self.client.chat.completions.create(
                 model=model_name,
-                messages=[{"role": "user", "content": prompt}],
-                response_format={ "type": "json_object" }
+                messages=[{"role": "user", "content": prompt}]
             )
             response_text = response.choices[0].message.content
-            data = json.loads(response_text)
+            
+            clean_text = re.sub(r'```json\s*|\s*```', '', response_text).strip()
+            data = json.loads(clean_text)
             
             correct_answer = data['correct_answer']
             options = data['incorrect_answers'] + [correct_answer]
@@ -375,7 +376,7 @@ class OpenAIProvider(AIProvider):
         }
 
     async def generate_autoreply(self, user_message: str, knowledge_base_content: str) -> str:
-        model_name = await self._get_model_name('openai_model_autoreply', 'gpt-3.5-turbo')
+        model_name = await self._get_model_name('openai_model_autoreply', 'gpt-4.1')
         if not knowledge_base_content or knowledge_base_content.strip() == "":
             return None
 

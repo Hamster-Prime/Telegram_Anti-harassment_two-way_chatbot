@@ -143,13 +143,13 @@ class DatabaseManager:
             ('queue_max_size', '1000', '内部消息处理队列的最大容量'),
             ('ai_provider', 'gemini', '当前使用的AI提供商 (gemini, openai)'),
             
-            ('gemini_model_filter', 'gemini-2.0-flash', 'Gemini 内容审查模型'),
-            ('gemini_model_verification', 'gemini-2.0-flash-lite', 'Gemini 验证码生成模型'),
-            ('gemini_model_autoreply', 'gemini-2.0-flash', 'Gemini 自动回复模型'),
+            ('gemini_model_filter', 'gemini-2.5-flash', 'Gemini 内容审查模型'),
+            ('gemini_model_verification', 'gemini-2.5-flash-lite', 'Gemini 验证码生成模型'),
+            ('gemini_model_autoreply', 'gemini-2.5-flash', 'Gemini 自动回复模型'),
 
-            ('openai_model_filter', 'gpt-3.5-turbo', 'OpenAI 内容审查模型'),
-            ('openai_model_verification', 'gpt-3.5-turbo', 'OpenAI 验证码生成模型'),
-            ('openai_model_autoreply', 'gpt-3.5-turbo', 'OpenAI 自动回复模型')
+            ('openai_model_filter', 'gpt-4.1', 'OpenAI 内容审查模型'),
+            ('openai_model_verification', 'gpt-4.1-mini', 'OpenAI 验证码生成模型'),
+            ('openai_model_autoreply', 'gpt-4.1', 'OpenAI 自动回复模型')
         ]
         for key, value, description in default_settings:
             await db.execute(
@@ -255,13 +255,13 @@ class DatabaseManager:
         try:
             await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('ai_provider', 'gemini', '当前使用的AI提供商 (gemini, openai)'))
             
-            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('gemini_model_filter', 'gemini-2.0-flash', 'Gemini 内容审查模型'))
-            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('gemini_model_verification', 'gemini-2.0-flash-lite', 'Gemini 验证码生成模型'))
-            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('gemini_model_autoreply', 'gemini-2.0-flash', 'Gemini 自动回复模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('gemini_model_filter', 'gemini-2.5-flash', 'Gemini 内容审查模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('gemini_model_verification', 'gemini-2.5-flash-lite', 'Gemini 验证码生成模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('gemini_model_autoreply', 'gemini-2.5-flash', 'Gemini 自动回复模型'))
 
-            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('openai_model_filter', 'gpt-3.5-turbo', 'OpenAI 内容审查模型'))
-            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('openai_model_verification', 'gpt-3.5-turbo', 'OpenAI 验证码生成模型'))
-            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('openai_model_autoreply', 'gpt-3.5-turbo', 'OpenAI 自动回复模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('openai_model_filter', 'gpt-4.1', 'OpenAI 内容审查模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('openai_model_verification', 'gpt-4.1-mini', 'OpenAI 验证码生成模型'))
+            await db.execute('INSERT OR IGNORE INTO settings (key, value, description) VALUES (?, ?, ?)', ('openai_model_autoreply', 'gpt-4.1', 'OpenAI 自动回复模型'))
 
             await db.execute("DELETE FROM settings WHERE key IN ('openai_model', 'gemini_model')")
 
