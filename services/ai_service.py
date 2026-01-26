@@ -51,6 +51,10 @@ class AIProvider(ABC):
         pass
 
     @abstractmethod
+    async def generate_unblock_question(self) -> dict:
+        pass
+
+    @abstractmethod
     async def generate_autoreply(self, user_message: str, knowledge_base_content: str) -> str:
         pass
         
@@ -179,8 +183,12 @@ class GeminiProvider(AIProvider):
             print(f"生成验证问题失败: {e}")
             return self._get_local_question()
 
+    async def generate_unblock_question(self) -> dict:
+        return await self.generate_verification_challenge()
+
     def _get_local_question(self) -> dict:
         question_data = random.choice(LOCAL_VERIFICATION_QUESTIONS)
+
         correct_answer = question_data['correct_answer']
         options = question_data['incorrect_answers'] + [correct_answer]
         random.shuffle(options)
@@ -363,6 +371,9 @@ class OpenAIProvider(AIProvider):
             print(f"OpenAI Generate verification failed: {e}")
             return self._get_local_question()
 
+    async def generate_unblock_question(self) -> dict:
+        return await self.generate_verification_challenge()
+
     def _get_local_question(self) -> dict:
         question_data = random.choice(LOCAL_VERIFICATION_QUESTIONS)
         correct_answer = question_data['correct_answer']
@@ -475,6 +486,12 @@ class AIService:
         if not provider:
              return GeminiProvider(None)._get_local_question()
         return await provider.generate_verification_challenge()
+
+    async def generate_unblock_question(self) -> dict:
+        provider = await self.get_provider()
+        if not provider:
+             return GeminiProvider(None)._get_local_question()
+        return await provider.generate_unblock_question()
 
     async def generate_autoreply(self, user_message: str, knowledge_base_content: str) -> str:
         provider = await self.get_provider()
