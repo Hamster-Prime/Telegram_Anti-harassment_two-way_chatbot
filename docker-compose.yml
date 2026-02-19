@@ -1,9 +1,18 @@
+version: '3.8'
+
 services:
-  TG-Antiharassment-Bot:
-    container_name: TG-Antiharassment-Bot  # 容器名，可定义
-    image: weijiaqaq/tg-antiharassment-bot:latest
+  bot:
+    build: .
+    container_name: tg-antiharassment-bot-rust
     restart: unless-stopped
-    env_file:
-     - .env
     volumes:
-     - ./data:/app/data
+      - ./.env:/app/.env:ro
+      - ./data:/app/data
+    environment:
+      - RUST_LOG=info
+    networks:
+      - bot-network
+
+networks:
+  bot-network:
+    driver: bridge

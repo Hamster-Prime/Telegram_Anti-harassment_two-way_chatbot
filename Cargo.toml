@@ -1,0 +1,78 @@
+[package]
+name = "tg-anti-harassment-bot"
+version = "1.0.0"
+edition = "2021"
+authors = ["Hamster-Prime"]
+description = "Telegram双向聊天机器人 - Rust重构版"
+license = "MIT"
+
+[dependencies]
+# 异步运行时
+tokio = { version = "1.35", features = ["full"] }
+tokio-util = "0.7"
+
+# Telegram Bot
+teloxide = { version = "0.12", features = ["macros", "webhooks", "rustls"] }
+
+# 数据库
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "sqlite", "migrate", "chrono"] }
+
+# HTTP客户端
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+
+# 序列化
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# 配置
+dotenvy = "0.15"
+config = "0.14"
+
+# 日志
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# 时间
+chrono = { version = "0.4", features = ["serde"] }
+
+# 错误处理
+anyhow = "1.0"
+thiserror = "1.0"
+
+# 工具库
+lazy_static = "1.4"
+once_cell = "1.19"
+dashmap = "5.5"
+parking_lot = "0.12"
+
+# RSS解析
+rss = "2.0"
+
+# Markdown/HTML处理
+pulldown-cmark = "0.9"
+html2text = "0.12"
+
+# 图像处理
+image = "0.24"
+
+# 正则
+regex = "1.10"
+
+# 随机数
+rand = "0.8"
+
+# 加密/哈希
+sha2 = "0.10"
+base64 = "0.21"
+
+# SSH客户端 (网络测试用)
+async-ssh2-tokio = "0.8"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
