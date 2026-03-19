@@ -7,7 +7,7 @@ from services.verification import verify_answer, create_verification
 from services.gemini_service import gemini_service
 from database import models as db
 from utils.media_converter import sticker_to_image
-from services.thread_manager import get_or_create_thread
+from services.thread_manager import get_or_create_thread, build_user_info_card_keyboard
 from .user_handler import _resend_message
 from config import config
 from rss import data_manager as rss_data_manager, settings as rss_settings
@@ -36,6 +36,16 @@ def _resolve_rss_reference(application, token, expected_kind):
     if kind != expected_kind:
         return None
     return payload
+
+
+async def _refresh_usercard_keyboard(query, target_user_id: int):
+    keyboard = await build_user_info_card_keyboard(target_user_id)
+
+    try:
+        await query.edit_message_reply_markup(reply_markup=keyboard)
+    except BadRequest as exc:
+        if "message is not modified" not in exc.message.lower():
+            raise
 
 
 def _collect_rss_feeds():
@@ -1402,6 +1412,52 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
     
+    elif data.startswith("usercard_block_"):
+        from services.blacklist import block_user, unblock_user
+
+        if not await db.is_admin(user_id):
+            return
+
+        try:
+            user_id_to_block = int(data.split("_")[2])
+        except (ValueError, IndexError):
+            return
+
+        is_blocked, _ = await db.is_blacklisted(user_id_to_block)
+        if is_blocked:
+            await unblock_user(user_id_to_block)
+        else:
+            await block_user(
+                user_id_to_block,
+                "用户信息卡片快捷封禁",
+                user_id,
+                permanent=True
+            )
+
+        await _refresh_usercard_keyboard(query, user_id_to_block)
+
+    elif data.startswith("usercard_exempt_"):
+        if not await db.is_admin(user_id):
+            return
+
+        try:
+            user_id_to_exempt = int(data.split("_")[2])
+        except (ValueError, IndexError):
+            return
+
+        is_exempted = await db.is_exempted(user_id_to_exempt)
+        if is_exempted:
+            await db.remove_exemption(user_id_to_exempt)
+        else:
+            await db.add_exemption(
+                user_id_to_exempt,
+                is_permanent=True,
+                exempted_by=user_id,
+                reason="用户信息卡片快捷豁免"
+            )
+
+        await _refresh_usercard_keyboard(query, user_id_to_exempt)
+
     elif data.startswith("unblock_"):
         from services.blacklist import verify_unblock_answer
         answer = data.split("_", 1)[1]

@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 from database import models as db
@@ -30,10 +30,33 @@ async def get_or_create_thread(update: Update, context: ContextTypes.DEFAULT_TYP
         print(f"创建话题失败: {e}")
         return None, False
 
+async def build_user_info_card_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    is_blocked, _ = await db.is_blacklisted(user_id)
+    is_exempted = await db.is_exempted(user_id)
+
+    keyboard = [[
+        InlineKeyboardButton(
+            "解除封禁" if is_blocked else "封禁",
+            callback_data=f"usercard_block_{user_id}"
+        ),
+        InlineKeyboardButton(
+            "取消豁免" if is_exempted else "豁免",
+            callback_data=f"usercard_exempt_{user_id}"
+        ),
+        InlineKeyboardButton(
+            "直接联系",
+            url=f"tg://user?id={user_id}"
+        ),
+    ]]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
 async def send_user_info_card(update: Update, context: ContextTypes.DEFAULT_TYPE, thread_id: int):
     user = update.effective_user
     
     photos = await context.bot.get_user_profile_photos(user.id, limit=1)
+    reply_markup = await build_user_info_card_keyboard(user.id)
     
     first_name = escape_markdown(user.first_name or '', version=2)
     last_name = escape_markdown(user.last_name or '', version=2)
@@ -53,14 +76,16 @@ async def send_user_info_card(update: Update, context: ContextTypes.DEFAULT_TYPE
             photo=photos.photos[0][0].file_id,
             caption=info_text,
             message_thread_id=thread_id,
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            reply_markup=reply_markup
         )
     else:
         await context.bot.send_message(
             chat_id=config.FORUM_GROUP_ID,
             text=info_text,
             message_thread_id=thread_id,
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            reply_markup=reply_markup
         )
     
     from handlers.user_handler import _resend_message
