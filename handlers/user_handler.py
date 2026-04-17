@@ -100,6 +100,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(welcome_message)
         user_data = await db.get_user(user.id)
+    else:
+        await db.update_user_profile(
+            user_id=user.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            language_code=user.language_code
+        )
 
     if not user_data.get('is_verified'):
         if not config.VERIFICATION_ENABLED:

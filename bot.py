@@ -1,6 +1,5 @@
 import logging
 import asyncio
-from telegram import Update
 from telegram.ext import Application
 from config import config
 from handlers import register_handlers
@@ -20,17 +19,21 @@ def main():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
     )
-    
+
+    # Python 3.14 不再为主线程隐式创建事件循环，显式设置可兼容 PTB 的 run_polling。
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     db_manager = DatabaseManager(config.DATABASE_PATH)
-    asyncio.run(db_manager.initialize())
-    
+    loop.run_until_complete(db_manager.initialize())
+
     app = Application.builder().token(config.BOT_TOKEN).post_init(post_init).build()
-    
+
     register_handlers(app)
     setup_rss(app)
-    
+
     config.validate()
-    
+
     logging.info("Bot启动中...")
     app.run_polling()
 

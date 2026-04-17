@@ -22,6 +22,18 @@ async def add_user(user_id: int, username: str, first_name: str, last_name: str 
         ''', (user_id, username, first_name, last_name, language_code, datetime.now()))
         await db.commit()
 
+async def update_user_profile(user_id: int, username: str, first_name: str, last_name: str = None, language_code: str = None):
+    async with db_manager.get_connection() as db:
+        await db.execute(
+            '''
+            UPDATE users
+            SET username = ?, first_name = ?, last_name = ?, language_code = ?, last_active = ?
+            WHERE user_id = ?
+            ''',
+            (username, first_name, last_name, language_code, datetime.now(), user_id)
+        )
+        await db.commit()
+
 async def update_user_verification(user_id: int, is_verified: bool):
     async with db_manager.get_connection() as db:
         await db.execute(
