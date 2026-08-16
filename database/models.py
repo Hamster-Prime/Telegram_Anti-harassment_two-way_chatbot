@@ -16,9 +16,15 @@ async def get_user(user_id: int):
 async def add_user(user_id: int, username: str, first_name: str, last_name: str = None, language_code: str = None):
     async with db_manager.get_connection() as db:
         await db.execute('''
-            INSERT OR REPLACE INTO users
+            INSERT INTO users
             (user_id, username, first_name, last_name, language_code, last_active)
             VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username = excluded.username,
+                first_name = excluded.first_name,
+                last_name = excluded.last_name,
+                language_code = excluded.language_code,
+                last_active = excluded.last_active
         ''', (user_id, username, first_name, last_name, language_code, datetime.now()))
         await db.commit()
 
@@ -70,6 +76,163 @@ async def save_message(user_id: int, message_id: int, content: str, direction: s
         ''', (user_id, message_id, content, direction, media_type, media_file_id))
         await db.commit()
 
+
+_MESSAGE_MAPPING_FIELDS = (
+    'user_id',
+    'user_chat_id',
+    'user_message_id',
+    'admin_chat_id',
+    'admin_message_id',
+    'thread_id',
+    'origin_side',
+)
+
+
+def _message_mapping_from_row(cursor, row):
+    if row is None:
+        return None
+    return dict(zip([column[0] for column in cursor.description], row))
+
+
+async def _get_message_mapping_by_endpoint(db, side: str, chat_id: int, message_id: int):
+    if side not in {'user', 'admin'}:
+        raise ValueError(f"Unsupported message mapping side: {side}")
+
+    async with db.execute(
+        f'''
+            SELECT * FROM message_mappings
+            WHERE {side}_chat_id = ? AND {side}_message_id = ?
+        ''',
+        (chat_id, message_id)
+    ) as cursor:
+        return _message_mapping_from_row(cursor, await cursor.fetchone())
+
+
+async def save_message_mapping(
+    user_id: int,
+    user_chat_id: int,
+    user_message_id: int,
+    admin_chat_id: int,
+    admin_message_id: int,
+    thread_id: int,
+    origin_side: str,
+):
+    mappings = await save_message_mappings([{
+        'user_id': user_id,
+        'user_chat_id': user_chat_id,
+        'user_message_id': user_message_id,
+        'admin_chat_id': admin_chat_id,
+        'admin_message_id': admin_message_id,
+        'thread_id': thread_id,
+        'origin_side': origin_side,
+    }])
+    return mappings[0]
+
+
+async def save_message_mappings(mappings: list[dict]):
+    if not mappings:
+        return []
+
+    expected_mappings = []
+    for mapping in mappings:
+        expected = {field: mapping[field] for field in _MESSAGE_MAPPING_FIELDS}
+        if expected['origin_side'] not in {'user', 'admin'}:
+            raise ValueError("origin_side must be either 'user' or 'admin'")
+        expected_mappings.append(expected)
+
+    async with db_manager.get_connection() as db:
+        try:
+            for expected in expected_mappings:
+                await db.execute('''
+                    INSERT INTO message_mappings (
+                        user_id,
+                        user_chat_id,
+                        user_message_id,
+                        admin_chat_id,
+                        admin_message_id,
+                        thread_id,
+                        origin_side
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT DO NOTHING
+                ''', tuple(expected[field] for field in _MESSAGE_MAPPING_FIELDS))
+
+            saved_mappings = []
+            for expected in expected_mappings:
+                user_mapping = await _get_message_mapping_by_endpoint(
+                    db,
+                    'user',
+                    expected['user_chat_id'],
+                    expected['user_message_id'],
+                )
+                admin_mapping = await _get_message_mapping_by_endpoint(
+                    db,
+                    'admin',
+                    expected['admin_chat_id'],
+                    expected['admin_message_id'],
+                )
+
+                if not (
+                    user_mapping
+                    and user_mapping == admin_mapping
+                    and all(
+                        user_mapping[field] == value
+                        for field, value in expected.items()
+                    )
+                ):
+                    raise ValueError(
+                        'Message endpoint is already associated with a different mapping'
+                    )
+                saved_mappings.append(user_mapping)
+
+            await db.commit()
+            return saved_mappings
+        except Exception:
+            await db.rollback()
+            raise
+
+
+async def get_message_mapping_by_user_endpoint(chat_id: int, message_id: int):
+    async with db_manager.get_connection() as db:
+        return await _get_message_mapping_by_endpoint(
+            db, 'user', chat_id, message_id
+        )
+
+
+async def get_message_mapping_by_admin_endpoint(chat_id: int, message_id: int):
+    async with db_manager.get_connection() as db:
+        return await _get_message_mapping_by_endpoint(
+            db, 'admin', chat_id, message_id
+        )
+
+
+async def delete_message_mappings_for_user(user_id: int) -> int:
+    async with db_manager.get_connection() as db:
+        cursor = await db.execute(
+            'DELETE FROM message_mappings WHERE user_id = ?',
+            (user_id,)
+        )
+        await db.commit()
+        return cursor.rowcount
+
+
+async def reset_user_relay_state(user_id: int) -> int:
+    async with db_manager.get_connection() as db:
+        try:
+            cursor = await db.execute(
+                'DELETE FROM message_mappings WHERE user_id = ?',
+                (user_id,)
+            )
+            await db.execute(
+                'UPDATE users SET thread_id = NULL, is_verified = 0 WHERE user_id = ?',
+                (user_id,)
+            )
+            await db.commit()
+            return cursor.rowcount
+        except Exception:
+            await db.rollback()
+            raise
+
 async def save_filtered_message(user_id: int, message_id: int, content: str, reason: str, media_type: str = None, media_file_id: str = None):
     async with db_manager.get_connection() as db:
         await db.execute('''
@@ -113,6 +276,10 @@ async def is_blacklisted(user_id: int):
 
 async def add_to_blacklist(user_id: int, reason: str, blocked_by: int, permanent: bool = False):
     async with db_manager.get_connection() as db:
+        await db.execute(
+            'INSERT OR IGNORE INTO users (user_id, first_name) VALUES (?, ?)',
+            (user_id, f"User_{user_id}")
+        )
         await db.execute(
             'UPDATE users SET is_blacklisted = 1, blacklist_strikes = blacklist_strikes + 1 WHERE user_id = ?',
             (user_id,)
@@ -366,6 +533,10 @@ async def is_exempted(user_id: int) -> bool:
 
 async def add_exemption(user_id: int, is_permanent: bool, exempted_by: int, reason: str = None, expires_at: str = None):
     async with db_manager.get_connection() as db:
+        await db.execute(
+            'INSERT OR IGNORE INTO users (user_id, first_name) VALUES (?, ?)',
+            (user_id, f"User_{user_id}")
+        )
         await db.execute('''
             INSERT OR REPLACE INTO exemptions 
             (user_id, is_permanent, expires_at, exempted_by, reason, created_at)

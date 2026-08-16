@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -7,6 +8,9 @@ from telegram.helpers import escape_markdown
 
 from config import config
 from database import models as db
+
+
+logger = logging.getLogger(__name__)
 
 
 def build_direct_contact_url(username: str | None) -> str | None:
@@ -34,7 +38,10 @@ def build_user_info_markdown(user) -> str:
     )
 
 
-async def get_or_create_thread(update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple[int, bool]:
+async def get_or_create_thread(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+) -> tuple[int, bool]:
     user = update.effective_user
     user_data = await db.get_user(user.id)
 
@@ -47,22 +54,48 @@ async def get_or_create_thread(update: Update, context: ContextTypes.DEFAULT_TYP
             chat_id=config.FORUM_GROUP_ID,
             name=topic_name
         )
-        thread_id = topic.message_thread_id
-
-        await db.update_user_thread_id(user.id, thread_id)
-
-        try:
-            await send_user_info_card(update, context, thread_id)
-        except Exception as e:
-            print(f"发送用户信息卡片失败: {e}")
-
-        from handlers.user_handler import _resend_message
-        await _resend_message(update, context, thread_id)
-
-        return thread_id, True
-    except Exception as e:
-        print(f"创建话题失败: {e}")
+    except Exception:
+        logger.exception("创建用户 %s 的话题失败", user.id)
         return None, False
+
+    thread_id = topic.message_thread_id
+    thread_saved = False
+    try:
+        await db.update_user_thread_id(user.id, thread_id)
+        thread_saved = True
+    except Exception:
+        logger.exception("保存用户 %s 的话题映射失败", user.id)
+        try:
+            saved_user = await db.get_user(user.id)
+            thread_saved = bool(
+                saved_user and saved_user.get("thread_id") == thread_id
+            )
+        except Exception:
+            logger.exception("无法确认用户 %s 的话题映射是否已保存", user.id)
+
+    if not thread_saved:
+        try:
+            await context.bot.delete_forum_topic(
+                chat_id=config.FORUM_GROUP_ID,
+                message_thread_id=thread_id,
+            )
+        except Exception:
+            logger.exception("删除未落库的话题 %s 失败", thread_id)
+            try:
+                await context.bot.close_forum_topic(
+                    chat_id=config.FORUM_GROUP_ID,
+                    message_thread_id=thread_id,
+                )
+            except Exception:
+                logger.exception("关闭未落库的话题 %s 失败", thread_id)
+        return None, False
+
+    try:
+        await send_user_info_card(update, context, thread_id)
+    except Exception:
+        logger.exception("发送用户 %s 的信息卡片失败", user.id)
+
+    return thread_id, True
 
 
 async def build_user_info_card_keyboard(

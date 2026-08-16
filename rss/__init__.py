@@ -43,8 +43,9 @@ def setup(app: Application) -> None:
     data_manager.load_subscriptions(data_file)
     app.bot_data["rss_data_file"] = data_file
 
+    command_filter = filters.UpdateType.MESSAGE & filters.ChatType.PRIVATE
     for command, handler in rss_handlers.COMMAND_MAP.items():
-        app.add_handler(CommandHandler(command, handler, filters=filters.ChatType.PRIVATE))
+        app.add_handler(CommandHandler(command, handler, filters=command_filter))
 
     if settings.is_enabled():
         _schedule_feed_job(app)
@@ -69,4 +70,3 @@ def disable_feature(app: Application) -> bool:
     _cancel_feed_job(app)
     logger.info("RSS 订阅功能已在运行时关闭。")
     return True
-

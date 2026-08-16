@@ -1,5 +1,5 @@
 # Telegram Bot
-python-telegram-bot[all]>=20.0
+python-telegram-bot[all]>=22.0,<23.0
 
 # AI
 google-genai>=1.51.0

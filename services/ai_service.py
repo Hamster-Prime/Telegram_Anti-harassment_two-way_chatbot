@@ -502,7 +502,7 @@ class AIService:
         if not provider:
              return {"is_spam": False, "reason": "No AI provider configured"}
         
-        text = message.text if message.text else ""
+        text = message.text or message.caption or ""
         return await provider.analyze_message(text, image_bytes)
 
     async def generate_verification_challenge(self) -> dict:

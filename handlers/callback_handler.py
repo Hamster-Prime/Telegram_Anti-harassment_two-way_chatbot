@@ -1,14 +1,15 @@
+import asyncio
+import logging
 import re
 import secrets
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import BadRequest
+from telegram.error import BadRequest, TelegramError
 from telegram.ext import ContextTypes
-from services.verification import verify_answer, create_verification
-from services.gemini_service import gemini_service
+from services.verification import verify_answer
 from database import models as db
-from utils.media_converter import sticker_to_image
-from services.thread_manager import get_or_create_thread, build_user_info_card_keyboard
-from .user_handler import _resend_message
+from services.thread_manager import build_user_info_card_keyboard
+from services.media_group_buffer import enqueue_serialized
+from .user_handler import _forward_verified_messages
 from config import config
 from rss import data_manager as rss_data_manager, settings as rss_settings
 from rss import enable_feature as rss_enable_feature, disable_feature as rss_disable_feature
@@ -17,6 +18,8 @@ RSS_PANEL_CACHE_KEY = "rss_panel_cache"
 RSS_FEEDS_PER_PAGE = 4
 AI_MODELS_PER_PAGE = 5
 RSS_DOC_URL = "https://github.com/Hamster-Prime/Telegram_Anti-harassment_two-way_chatbot#-rss-%E8%AE%A2%E9%98%85%E5%8A%9F%E8%83%BD"
+
+logger = logging.getLogger(__name__)
 
 
 def _cache_rss_reference(application, kind, payload):
@@ -264,6 +267,94 @@ def _build_ai_model_selection_view(application, provider_type: str, feature_type
     return message, InlineKeyboardMarkup(keyboard)
 
 
+def _copy_pending_batches(context: ContextTypes.DEFAULT_TYPE):
+    pending = context.user_data.get("pending_updates")
+    legacy_pending = context.user_data.get("pending_update")
+    if not pending:
+        return [[legacy_pending]] if legacy_pending else []
+    if isinstance(pending[0], (list, tuple)):
+        batches = [list(batch) for batch in pending]
+    else:
+        batches = [list(pending)]
+    if legacy_pending:
+        batches.insert(0, [legacy_pending])
+    return batches
+
+
+async def _forward_pending_batches(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+) -> bool:
+    batches = _copy_pending_batches(context)
+    if not batches:
+        return False
+
+    context.user_data.pop("pending_update", None)
+    context.user_data["pending_updates"] = batches
+    while batches:
+        active_batches = batches
+        outcome = await _forward_verified_messages(
+            batches[0],
+            context,
+            user_id,
+        )
+        if outcome is False:
+            if context.user_data.get("pending_updates") is not active_batches:
+                replacement = _copy_pending_batches(context)
+                context.user_data["pending_updates"] = replacement + batches[1:]
+            return False
+        batches = batches[1:]
+        if batches:
+            context.user_data["pending_updates"] = batches
+        else:
+            context.user_data.pop("pending_updates", None)
+    return True
+
+
+async def _process_verification_callback(
+    query,
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    challenge_id: str,
+    option_index: int,
+):
+    result = await verify_answer(user_id, challenge_id, option_index)
+    success, message, is_banned, new_question = result[:4]
+    ignored = len(result) > 4 and result[4]
+
+    if ignored:
+        return
+
+    if is_banned:
+        await query.edit_message_text(text=message, reply_markup=None)
+        return
+
+    if new_question:
+        new_question_text, new_keyboard = new_question
+        await query.edit_message_text(
+            text=f"{message}\n\n{new_question_text}",
+            reply_markup=new_keyboard,
+        )
+        return
+
+    try:
+        await query.edit_message_text(text=message)
+    except TelegramError:
+        logger.exception("无法更新验证结果消息，继续处理待转发消息")
+    if success:
+        had_pending = bool(_copy_pending_batches(context))
+        forwarded = await _forward_pending_batches(context, user_id)
+        if not had_pending and not forwarded:
+            await query.message.reply_text("现在您可以发送消息了！")
+        elif had_pending and not forwarded:
+            user_data = await db.get_user(user_id)
+            if user_data and user_data.get("is_verified"):
+                await query.message.reply_text(
+                    "验证已完成，但待发送消息暂时传递失败；消息已保留，"
+                    "您下次发送消息时会自动重试。"
+                )
+
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -283,105 +374,49 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             return
     
-    if data.startswith("verify_"):
-        answer = data.split("_", 1)[1]
-        success, message, is_banned, new_question = await verify_answer(user_id, answer)
-        
-        if is_banned:
-            await query.edit_message_text(text=message, reply_markup=None)
+    if data.startswith("verify:"):
+        try:
+            _, challenge_id, option_index_text = data.split(":", 2)
+            option_index = int(option_index_text)
+        except (TypeError, ValueError):
             return
-        
-        if new_question:
-            new_question_text, new_keyboard = new_question
-            await query.edit_message_text(
-                text=f"{message}\n\n{new_question_text}",
-                reply_markup=new_keyboard
-            )
-            return
-        
-        await query.edit_message_text(text=message)
 
-        if success:
-            if 'pending_update' in context.user_data:
-                pending_update = context.user_data.pop('pending_update')
-                message = pending_update.message
-                image_bytes = None
-
-                if message.photo:
-                    photo_file = await message.photo[-1].get_file()
-                    image_bytes = await photo_file.download_as_bytearray()
-                elif message.sticker and not message.sticker.is_animated and not message.sticker.is_video:
-                    sticker_file = await message.sticker.get_file()
-                    sticker_bytes = await sticker_file.download_as_bytearray()
-                    image_bytes = await sticker_to_image(sticker_bytes)
-
-                should_forward = True
-                if message.video or message.animation:
-                    pass
-                else:
-                    analyzing_message = await context.bot.send_message(
-                        chat_id=message.chat_id,
-                        text="正在通过AI分析内容是否包含垃圾信息...",
-                        reply_to_message_id=message.message_id
+        async def process_verification():
+            try:
+                return await _process_verification_callback(
+                    query,
+                    context,
+                    user_id,
+                    challenge_id,
+                    option_index,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("后台处理用户 %s 的验证回调失败", user_id)
+                try:
+                    await query.message.reply_text(
+                        "验证处理暂时失败，请重新点击当前验证按钮。"
                     )
-                    analysis_result = await gemini_service.analyze_message(message, image_bytes)
-                    if analysis_result.get("is_spam"):
-                        should_forward = False
-                        media_type = None
-                        media_file_id = None
-                        if message.photo:
-                            media_type = "photo"
-                            media_file_id = message.photo[-1].file_id
-                        elif message.sticker:
-                            media_type = "sticker"
-                            media_file_id = message.sticker.file_id
+                except TelegramError:
+                    logger.exception("无法通知用户验证回调处理失败")
+                return None
 
-                        await db.save_filtered_message(
-                            user_id=user_id,
-                            message_id=message.message_id,
-                            content=message.text or message.caption,
-                            reason=analysis_result.get("reason"),
-                            media_type=media_type,
-                            media_file_id=media_file_id,
-                        )
-                        reason = analysis_result.get("reason", "未提供原因")
-                        await analyzing_message.edit_text(f"您的消息已被系统拦截，因此未被转发\n\n原因：{reason}")
-                    else:
-                        await analyzing_message.delete()
-
-                if should_forward:
-                    thread_id, is_new = await get_or_create_thread(pending_update, context)
-                    if not thread_id:
-                        await pending_update.message.reply_text("无法创建或找到您的话题，请联系管理员。")
-                        return
-                    
-                    try:
-                        if not is_new:
-                            await _resend_message(pending_update, context, thread_id)
-                    except BadRequest as e:
-                        if "Message thread not found" in e.message:
-                            await db.update_user_thread_id(user_id, None)
-                            await db.update_user_verification(user_id, False)
-                            
-                            context.user_data['pending_update'] = pending_update
-                            question, keyboard = await create_verification(user_id)
-                            
-                            full_message = (
-                                "您的话题已被关闭，请重新进行验证以发送消息。\n\n"
-                                f"{question}"
-                            )
-                            
-                            await pending_update.message.reply_text(
-                                text=full_message,
-                                reply_markup=keyboard
-                            )
-                        else:
-                            print(f"发送消息时发生未知错误: {e}")
-                            await pending_update.message.reply_text("发送消息时发生未知错误，请稍后再试。")
-            else:
-                await query.message.reply_text("现在您可以发送消息了！")
+        if hasattr(context, "application") and hasattr(context, "bot_data"):
+            accepted = enqueue_serialized(
+                context,
+                user_id,
+                process_verification,
+            )
+            if not accepted:
+                await query.message.reply_text(
+                    "当前消息队列繁忙，请稍后重新点击验证按钮。"
+                )
+        else:
+            await process_verification()
+        return
     
-    elif data == "panel_back":
+    if data == "panel_back":
         if not await db.is_admin(user_id):
             await query.answer("抱歉，您没有权限执行此操作。", show_alert=True)
             return
