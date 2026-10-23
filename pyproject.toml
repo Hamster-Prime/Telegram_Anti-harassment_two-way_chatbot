@@ -5,7 +5,7 @@ requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.9.0",
     "aiosqlite>=0.19.0",
-    "black>=23.0.0",
+    "black>=26.10.1",
     "feedparser>=6.0.0",
     "flake8>=6.0.0",
     "google-genai>=1.51.0",
